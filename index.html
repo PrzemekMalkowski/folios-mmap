@@ -1,0 +1,455 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Folio Write Amplification</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one wide stack diagram (layers top->bottom, counters on the right), step narration below. Single dark look, by choice. */
+:root {
+  color-scheme: dark;
+  --bg: #0b1424;
+  --bg2: #101d33;
+  --card: #15233d;
+  --line: #2a3b5c;
+  --fg: #e8eefb;
+  --muted: #9aabc9;
+  --app: #7b5cff;
+  --mmu: #27b06a;
+  --cache: #2f8ef5;
+  --fs: #f29a1f;
+  --dev: #5b6f93;
+  --dirty: #ff4f6d;
+  --clean: #3aa0ff;
+  --glow: #7fd3ff;
+  --display: "Red Hat Display", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+html, body { background: var(--bg); color: var(--fg); }
+body {
+  font-family: var(--display);
+  padding-inline: 16px;
+  padding-block: 28px 40px;
+  background:
+    radial-gradient(1200px 600px at 85% -10%, #17305a 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, #1a2550 0%, transparent 55%),
+    var(--bg);
+  min-height: 100%;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 22px; }
+header h1 {
+  margin: 0; font-weight: 900; font-size: clamp(30px, 5vw, 56px); letter-spacing: -0.02em; line-height: 1.02;
+  text-wrap: balance;
+}
+header h1 .hot { background: linear-gradient(90deg, #3fb6ff, #2f8ef5); -webkit-background-clip: text; background-clip: text; color: transparent; }
+header p { margin: 10px 0 0; color: var(--muted); font-size: 17px; max-width: 70ch; }
+figure { margin: 0; }
+.stage {
+  background: linear-gradient(180deg, rgba(21,35,61,.85), rgba(14,24,44,.85));
+  border: 1px solid var(--line); border-radius: 22px; padding: 14px; overflow-x: auto;
+}
+svg#stack { display: block; width: 100%; min-width: 760px; height: auto; font-family: var(--display); }
+figcaption { color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+/* narration + controls */
+.panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: start; }
+@media (max-width: 760px) { .panel { grid-template-columns: 1fr; } }
+.nav {
+  display: grid; gap: 10px; align-content: start;
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px;
+}
+.narr { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px; min-width: 0; }
+.narr .k { font-family: var(--mono); font-size: 12px; color: var(--glow); letter-spacing: .08em; text-transform: uppercase; }
+.narr h2 { margin: 6px 0 8px; font-size: 24px; font-weight: 700; text-wrap: balance; }
+.narr p { margin: 0; font-size: 16px; line-height: 1.55; max-width: 72ch; color: #d3dcf0; }
+.narr .refs { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+.narr code { font-family: var(--mono); font-size: 12.5px; background: #0d1830; border: 1px solid var(--line); color: #bfe3ff; padding: 3px 8px; border-radius: 8px; }
+.btns { display: flex; gap: 8px; }
+button {
+  font: 600 14px var(--display); color: var(--fg); background: #1c2c4c; border: 1px solid #34507e;
+  border-radius: 12px; padding: 10px 14px; cursor: pointer;
+}
+button:hover { background: #243860; }
+button:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+button.primary { background: var(--cache); border-color: #64adff; }
+.steps { display: grid; gap: 6px; }
+.steps button { text-align: left; font-weight: 500; font-size: 13px; padding: 7px 10px; background: transparent; border-color: var(--line); color: var(--muted); display: flex; gap: 8px; }
+.steps button .n { font-family: var(--mono); color: #6f86ad; }
+.steps button[aria-current="step"] { color: var(--fg); border-color: var(--glow); background: #15284a; }
+.steps button[aria-current="step"] .n { color: var(--glow); }
+
+/* ---- SVG styling ---- */
+.band-label { font-weight: 700; font-size: 15px; fill: #fff; }
+.band-sub { font-size: 12px; fill: var(--muted); }
+.chip rect { fill: #0f1b31; stroke: #3a4f77; stroke-width: 1.2; transition: stroke .4s, fill .4s; }
+.chip text { font-size: 13px; fill: #dce6fa; }
+.chip text.m { font-family: var(--mono); font-size: 12px; }
+.chip.on rect { stroke: var(--glow); fill: #14305a; filter: url(#glow); }
+.cell { fill: #1d3d6e; stroke: #0b1424; stroke-width: 1; transition: fill .35s; }
+.cell.dirty { fill: var(--dirty); }
+.cell.touch { fill: #ffd166; }
+.folio { fill: none; stroke: var(--clean); stroke-width: 2.2; rx: 6; transition: stroke .35s, opacity .4s; }
+.folio.dirty { stroke: var(--dirty); filter: url(#glowRed); }
+.small .folio { opacity: 0; }
+.small .cell { stroke: #3c78c9; stroke-width: 1.2; }
+.cellbox { opacity: 0; transition: opacity .4s; }
+.empty .cell { fill: #16243d; }
+.empty .folio { opacity: 0; }
+.flabel { font-size: 12px; fill: var(--muted); font-family: var(--mono); }
+.pte { fill: #1f5a3f; transition: opacity .4s; }
+.pmd rect { fill: #13392a; stroke: var(--mmu); stroke-width: 1.5; transition: fill .4s; }
+.pmd text { font-size: 12.5px; fill: #c9f2dc; font-family: var(--mono); }
+.pmd.on rect { fill: #1f7a4c; filter: url(#glowGreen); }
+.ptes.dim { opacity: .25; }
+.link { stroke: var(--mmu); stroke-width: 2; stroke-dasharray: 5 5; fill: none; opacity: 0; transition: opacity .4s; }
+.link.on { opacity: 1; animation: dash 1s linear infinite; }
+@keyframes dash { to { stroke-dashoffset: -20; } }
+.ra rect.track { fill: #0f1b31; stroke: #3a4f77; }
+.ra rect.win { fill: var(--fs); opacity: .85; transition: width .8s ease; }
+.ra text { font-size: 12px; fill: #dfe7f7; font-family: var(--mono); }
+.disk rect { fill: #1a2945; stroke: #3c5583; }
+.disk .led { fill: #36d17a; }
+.disk .led.busy { fill: #ff8a3d; animation: blink .25s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+.meter { fill: var(--dirty); transition: width .9s ease; }
+.cnt-k { font-size: 12.5px; fill: var(--muted); }
+.cnt-v { font-size: 20px; font-weight: 700; fill: #fff; font-family: var(--mono); }
+.cnt-v.hot { fill: var(--dirty); }
+.cnt-v.ok { fill: #4be39a; }
+.packet { pointer-events: none; }
+.order { font-family: var(--mono); font-size: 13px; fill: #ffd27a; }
+@media (prefers-reduced-motion: reduce) {
+  .link.on, .disk .led.busy { animation: none; }
+  .cell, .folio, .ra rect.win, .meter { transition: none; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>One small store, <span class="hot">2 MiB</span> to disk</h1>
+    <p>How readahead-built large folios turn sparse writes to a memory-mapped file into whole-folio writeback on Linux (XFS, kernel 5.18+). Step through the path from the application to the disk.</p>
+  </header>
+
+
+  <section class="panel">
+    <div class="narr" aria-live="polite">
+      <div class="k" id="n-k">Step 1 of 7</div>
+      <h2 id="n-h"></h2>
+      <p id="n-p"></p>
+      <div class="refs" id="n-r"></div>
+    </div>
+    <nav class="nav" aria-label="Walkthrough steps">
+      <div class="btns">
+        <button id="prev" aria-label="Previous step">◀ Prev</button>
+        <button id="play" class="primary" aria-label="Play or pause">Pause</button>
+        <button id="next" aria-label="Next step">Next ▶</button>
+      </div>
+      <div class="steps" id="steplist"></div>
+    </nav>
+  </section>
+
+  <figure>
+    <div class="stage">
+      <svg id="stack" viewBox="0 0 1200 800" role="img" aria-label="Kernel I/O stack: application, page tables, page cache with four 2 MiB folios, filesystem writeback and block device, with counters for bytes changed and bytes written.">
+        <defs>
+          <linearGradient id="gApp" x1="0" x2="1"><stop offset="0" stop-color="#7b5cff" stop-opacity=".28"/><stop offset="1" stop-color="#5a3fe0" stop-opacity=".12"/></linearGradient>
+          <linearGradient id="gMmu" x1="0" x2="1"><stop offset="0" stop-color="#27b06a" stop-opacity=".26"/><stop offset="1" stop-color="#1c8a52" stop-opacity=".10"/></linearGradient>
+          <linearGradient id="gCache" x1="0" x2="1"><stop offset="0" stop-color="#2f8ef5" stop-opacity=".28"/><stop offset="1" stop-color="#1f6fd0" stop-opacity=".10"/></linearGradient>
+          <linearGradient id="gFs" x1="0" x2="1"><stop offset="0" stop-color="#f29a1f" stop-opacity=".26"/><stop offset="1" stop-color="#d07a10" stop-opacity=".10"/></linearGradient>
+          <linearGradient id="gDev" x1="0" x2="1"><stop offset="0" stop-color="#5b6f93" stop-opacity=".30"/><stop offset="1" stop-color="#3f5070" stop-opacity=".12"/></linearGradient>
+          <filter id="glow" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="4" result="b"/><feFlood flood-color="#7fd3ff" flood-opacity=".55"/><feComposite in2="b" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="glowRed" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="5" result="b"/><feFlood flood-color="#ff4f6d" flood-opacity=".7"/><feComposite in2="b" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="glowGreen" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="4" result="b"/><feFlood flood-color="#27b06a" flood-opacity=".7"/><feComposite in2="b" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7fd3ff"/></marker>
+        </defs>
+
+        <!-- Bands -->
+        <g id="bands">
+          <rect x="30" y="40" width="830" height="120" rx="18" fill="url(#gApp)" stroke="#5a46c9" stroke-opacity=".6"/>
+          <rect x="48" y="56" width="196" height="30" rx="10" fill="var(--app)"/>
+          <text class="band-label" x="62" y="76">Application</text>
+          <text class="band-sub" x="50" y="106">user space process</text>
+          <text class="band-sub" x="50" y="124">MAP_SHARED file</text>
+
+          <rect x="30" y="174" width="830" height="96" rx="18" fill="url(#gMmu)" stroke="#1f8a54" stroke-opacity=".6"/>
+          <rect x="48" y="190" width="196" height="30" rx="10" fill="var(--mmu)"/>
+          <text class="band-label" x="62" y="210">Page tables (MMU)</text>
+          <text class="band-sub" x="50" y="240">maps file memory</text>
+          <text class="band-sub" x="50" y="257">into the process</text>
+
+          <rect x="30" y="284" width="830" height="196" rx="18" fill="url(#gCache)" stroke="#2a6fc4" stroke-opacity=".6"/>
+          <rect x="48" y="300" width="196" height="30" rx="10" fill="var(--cache)"/>
+          <text class="band-label" x="62" y="320">Page cache</text>
+          <text class="band-sub" x="50" y="350">file data in RAM,</text>
+          <text class="band-sub" x="50" y="367">managed as folios</text>
+          <text class="band-sub" x="50" y="384">(1 folio = 2^order</text>
+          <text class="band-sub" x="50" y="401">× 4 KiB pages)</text>
+
+          <rect x="30" y="494" width="830" height="104" rx="18" fill="url(#gFs)" stroke="#c77a12" stroke-opacity=".6"/>
+          <rect x="48" y="510" width="196" height="30" rx="10" fill="var(--fs)"/>
+          <text class="band-label" x="62" y="530">Filesystem · writeback</text>
+          <text class="band-sub" x="50" y="560">XFS / iomap,</text>
+          <text class="band-sub" x="50" y="577">flusher threads</text>
+
+          <rect x="30" y="612" width="830" height="160" rx="18" fill="url(#gDev)" stroke="#4a5d82" stroke-opacity=".7"/>
+          <rect x="48" y="628" width="196" height="30" rx="10" fill="var(--dev)"/>
+          <text class="band-label" x="62" y="648">Block layer · device</text>
+          <text class="band-sub" x="50" y="678">readahead, I/O</text>
+          <text class="band-sub" x="50" y="695">requests, disk</text>
+        </g>
+
+        <!-- Application ops -->
+        <g id="op-scan" class="chip"><rect x="280" y="76" width="170" height="44" rx="12"/><text x="365" y="96" text-anchor="middle">sequential read</text><text class="m" x="365" y="112" text-anchor="middle">read() · scan · recovery</text></g>
+        <g id="op-store" class="chip"><rect x="476" y="76" width="170" height="44" rx="12"/><text x="561" y="96" text-anchor="middle">small stores</text><text class="m" x="561" y="112" text-anchor="middle">records ~700 B each</text></g>
+        <g id="op-release" class="chip"><rect x="672" y="76" width="170" height="44" rx="12"/><text x="757" y="96" text-anchor="middle">scattered updates</text><text class="m" x="757" y="112" text-anchor="middle">flag flips, 24 B each</text></g>
+
+        <!-- MMU -->
+        <g id="ptes" class="ptes"></g>
+        <text class="band-sub" x="280" y="258">512 × PTE, one per 4 KiB page</text>
+        <g id="pmd" class="pmd"><rect x="600" y="196" width="242" height="40" rx="10"/><text x="721" y="221" text-anchor="middle">1 × PMD → whole 2 MiB folio</text></g>
+        <text class="band-sub" x="600" y="258">one entry, one dirty bit</text>
+
+        <!-- Page cache strip -->
+        <g id="strip"></g>
+        <text id="order" class="order" x="270" y="318"></text>
+        <path id="link" class="link" d="M 721 236 C 721 290, 450 300, 450 352"/>
+
+        <!-- FS chips -->
+        <g id="fs-mkwrite" class="chip"><rect x="270" y="528" width="230" height="46" rx="12"/><text x="385" y="548" text-anchor="middle">write fault</text><text class="m" x="385" y="564" text-anchor="middle">page_mkwrite → folio_mark_dirty</text></g>
+        <g id="fs-flusher" class="chip"><rect x="514" y="528" width="160" height="46" rx="12"/><text x="594" y="548" text-anchor="middle">flusher thread</text><text class="m" x="594" y="564" text-anchor="middle">dirty_expire 30 s</text></g>
+        <g id="fs-iomap" class="chip"><rect x="688" y="528" width="156" height="46" rx="12"/><text x="766" y="548" text-anchor="middle">iomap writeback</text><text class="m" x="766" y="564" text-anchor="middle">whole folio → bio</text></g>
+
+        <!-- Device -->
+        <g id="ra" class="ra">
+          <text x="270" y="650">readahead window (read_ahead_kb)</text>
+          <rect class="track" x="270" y="662" width="320" height="22" rx="6"/>
+          <rect id="ra-win" class="win" x="270" y="662" width="10" height="22" rx="6"/>
+          <text id="ra-txt" x="270" y="704">128 KiB</text>
+          <text x="270" y="740">max folio from readahead ≈ window size (≤ 2 MiB)</text>
+        </g>
+        <g id="disk" class="disk">
+          <rect x="640" y="636" width="200" height="34" rx="9"/><circle class="led" cx="820" cy="653" r="4"/>
+          <rect x="640" y="676" width="200" height="34" rx="9"/><circle class="led" cx="820" cy="693" r="4"/>
+          <text x="656" y="658" font-size="12.5" fill="#dfe7f7">disk / volume</text>
+          <rect x="640" y="720" width="200" height="12" rx="6" fill="#0f1b31" stroke="#3a4f77"/>
+          <rect id="meter" class="meter" x="640" y="720" width="0" height="12" rx="6"/>
+          <text id="meter-txt" x="740" y="754" text-anchor="middle" font-size="12" fill="#c9d6ee" style="font-family: var(--mono)">written: 0 B</text>
+        </g>
+
+        <!-- Counters -->
+        <g id="counters">
+          <rect x="882" y="40" width="288" height="732" rx="18" fill="#0f1a30" stroke="#2a3b5c"/>
+          <text x="904" y="74" font-size="15" font-weight="700" fill="#fff">What the kernel sees</text>
+          <text class="cnt-k" x="904" y="112">Bytes the app changed</text><text id="c-app" class="cnt-v" x="904" y="140">–</text>
+          <text class="cnt-k" x="904" y="182">Bytes written to disk</text><text id="c-disk" class="cnt-v" x="904" y="210">–</text>
+          <text class="cnt-k" x="904" y="252">Write amplification</text><text id="c-ratio" class="cnt-v" x="904" y="280">–</text>
+          <line x1="904" x2="1148" y1="306" y2="306" stroke="#2a3b5c"/>
+          <text class="cnt-k" x="904" y="338">Folio size in this file</text><text id="c-folio" class="cnt-v" x="904" y="366">–</text>
+          <text class="cnt-k" x="904" y="408">read_ahead_kb</text><text id="c-ra" class="cnt-v" x="904" y="436">128</text>
+          <text class="cnt-k" x="904" y="478">FilePmdMapped (meminfo)</text><text id="c-pmd" class="cnt-v" x="904" y="506">0 kB</text>
+          <text class="cnt-k" x="904" y="548">Dirty (meminfo)</text><text id="c-dirty" class="cnt-v" x="904" y="576">0 kB</text>
+          <line x1="904" x2="1148" y1="602" y2="602" stroke="#2a3b5c"/>
+          <text class="cnt-k" x="904" y="632">Legend</text>
+          <rect x="904" y="646" width="14" height="14" rx="3" fill="#1d3d6e"/><text class="cnt-k" x="926" y="658">clean 4 KiB page</text>
+          <rect x="904" y="670" width="14" height="14" rx="3" fill="#ffd166"/><text class="cnt-k" x="926" y="682">bytes actually stored</text>
+          <rect x="904" y="694" width="14" height="14" rx="3" fill="#ff4f6d"/><text class="cnt-k" x="926" y="706">dirty, will be written</text>
+          <rect x="904" y="718" width="14" height="14" rx="3" fill="none" stroke="#3aa0ff" stroke-width="2"/><text class="cnt-k" x="926" y="730">folio boundary</text>
+        </g>
+
+        <g id="packets"></g>
+      </svg>
+    </div>
+    <figcaption>Not to scale: each folio is drawn as 16 cells standing for its 512 pages. The four folios are an 8 MiB stretch of one file at offset 64 MiB, past the readahead ramp at the start of the file.</figcaption>
+  </figure>
+
+</div>
+
+<script>
+(() => {
+  const NS = "http://www.w3.org/2000/svg";
+  const $ = (id) => document.getElementById(id);
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+
+  // ---- build page cache strip: 4 folios x 16 cells
+  const strip = $("strip");
+  const X0 = 270, Y0 = 352, FW = 136, GAP = 10, CH = 46, NC = 16, CW = FW / NC;
+  const folios = [], cells = [];
+  for (let f = 0; f < 4; f++) {
+    const fx = X0 + f * (FW + GAP);
+    const g = mk("g", {}, strip);
+    const row = [];
+    for (let c = 0; c < NC; c++) row.push(mk("rect", { class: "cell", x: (fx + c * CW).toFixed(2), y: Y0, width: (CW - 0.6).toFixed(2), height: CH, rx: 2 }, g));
+    cells.push(row);
+    folios.push(mk("rect", { class: "folio", x: fx - 2, y: Y0 - 3, width: FW + 4, height: CH + 6, rx: 6 }, g));
+    const t = mk("text", { class: "flabel", x: fx + FW / 2, y: Y0 + CH + 22, "text-anchor": "middle" }, g);
+    t.textContent = ""; t.dataset.f = f;
+  }
+  const flabels = [...strip.querySelectorAll(".flabel")];
+  const ticks = mk("g", {}, strip);
+  ["64 MiB", "66 MiB", "68 MiB", "70 MiB", "72 MiB"].forEach((s, i) => { const t = mk("text", { class: "band-sub", x: X0 + i * (FW + GAP) - (i ? GAP / 2 : 0), y: Y0 + CH + 44, "text-anchor": i ? "middle" : "start" }, ticks); t.textContent = s; });
+  const fileTag = mk("text", { class: "band-sub", x: 50, y: Y0 + CH + 44 }, ticks); fileTag.textContent = "file offset →";
+  const ramp = mk("rect", { x: X0 - 2, y: Y0 - 3, width: 0, height: CH + 6, rx: 6, fill: "none", stroke: "#ffd27a", "stroke-width": 2.4, opacity: 0 }, strip);
+
+  $("link").setAttribute("d", `M 721 236 C 721 300, ${X0 + FW + GAP + FW / 2} 300, ${X0 + FW + GAP + FW / 2} ${Y0 - 4}`);
+  // ---- PTE grid
+  const ptes = $("ptes");
+  for (let r = 0; r < 2; r++) for (let c = 0; c < 32; c++) mk("rect", { class: "pte", x: 280 + c * 9.6, y: 198 + r * 19, width: 8, height: 15, rx: 2 }, ptes);
+
+  // ---- helpers
+  const svg = $("stack"), pk = $("packets");
+  const timers = [];
+  const later = (ms, fn) => timers.push(setTimeout(fn, reduce ? 0 : ms));
+  const clearTimers = () => { while (timers.length) clearTimeout(timers.pop()); pk.replaceChildren(); };
+  function fly(x1, y1, x2, y2, { color = "#7fd3ff", r = 6, dur = 900, delay = 0, w = 0 } = {}) {
+    if (reduce) return;
+    const el = w ? mk("rect", { class: "packet", x: -w / 2, y: -9, width: w, height: 18, rx: 5, fill: color, opacity: .95 }, pk)
+                 : mk("circle", { class: "packet", r, fill: color }, pk);
+    el.style.filter = "drop-shadow(0 0 6px " + color + ")";
+    el.animate([{ transform: `translate(${x1}px,${y1}px)`, opacity: 0 }, { opacity: 1, offset: .15 }, { opacity: 1, offset: .85 }, { transform: `translate(${x2}px,${y2}px)`, opacity: 0 }],
+               { duration: dur, delay, easing: "cubic-bezier(.4,.1,.3,1)", fill: "both" });
+    setTimeout(() => el.remove(), dur + delay + 50);
+  }
+  const cellX = (f, c) => X0 + f * (FW + GAP) + c * CW + CW / 2;
+  const folioX = (f) => X0 + f * (FW + GAP) + FW / 2;
+  const on = (id, v) => $(id).classList.toggle("on", v);
+  const setC = (id, v, cls) => { const e = $(id); e.textContent = v; e.classList.remove("hot", "ok"); if (cls) e.classList.add(cls); };
+  function setRA(kb) {
+    const w = Math.max(10, Math.min(320, 320 * Math.log2(kb / 64) / Math.log2(4096 / 64)));
+    $("ra-win").setAttribute("width", w.toFixed(1));
+    $("ra-txt").textContent = kb >= 1024 ? (kb / 1024) + " MiB" : kb + " KiB";
+    setC("c-ra", String(kb));
+  }
+  function meter(bytes, label) {
+    const w = Math.min(200, bytes <= 0 ? 0 : 200 * Math.log2(1 + bytes / 4096) / Math.log2(1 + 16777216 / 4096));
+    $("meter").setAttribute("width", w.toFixed(1));
+    $("meter-txt").textContent = "written: " + label;
+  }
+  function leds(busy) { svg.querySelectorAll(".disk .led").forEach(l => l.classList.toggle("busy", busy)); }
+  function mode(m) { // 'empty' | 'large' | 'small'
+    svg.classList.remove("empty", "small", "large"); svg.classList.add(m);
+    flabels.forEach(t => t.textContent = m === "large" ? "2 MiB folio" : m === "small" ? "512 × 4 KiB folios" : "");
+  }
+  function resetCells() { cells.flat().forEach(c => c.classList.remove("dirty", "touch")); folios.forEach(f => f.classList.remove("dirty")); }
+  function dirtyFolio(f) { cells[f].forEach(c => c.classList.add("dirty")); folios[f].classList.add("dirty"); }
+  function base() {
+    clearTimers(); resetCells();
+    ["op-scan", "op-store", "op-release", "fs-mkwrite", "fs-flusher", "fs-iomap", "pmd"].forEach(i => on(i, false));
+    $("link").classList.remove("on"); $("ptes").classList.remove("dim");
+    ramp.setAttribute("opacity", 0); $("order").textContent = ""; leds(false);
+  }
+
+  // ---- steps
+  const STEPS = [
+    {
+      t: "The stack",
+      p: "An application maps a file with MAP_SHARED and changes it through memory. Between its stores and the disk sit the page tables, the page cache, the filesystem's writeback and the block layer. The page cache holds the file in folios.",
+      r: ["mmap(MAP_SHARED)", "page cache", "folio"],
+      run() { mode("empty"); setRA(128); meter(0, "0 B"); setC("c-app", "–"); setC("c-disk", "–"); setC("c-ratio", "–"); setC("c-folio", "–"); setC("c-pmd", "0 kB"); setC("c-dirty", "0 kB"); }
+    },
+    {
+      t: "A sequential read builds large folios",
+      p: "Something reads the file front to back: a recovery pass, a backup, a copy. With a large read_ahead_kb, each readahead step raises the folio order by two (2 → 4 → 6 → 8 → 9) until folios reach 2 MiB. A single read() larger than the window can do the same, up to max_sectors_kb. Free memory must have contiguous 2 MiB blocks, or readahead falls back to 4 KiB.",
+      r: ["page_cache_ra_order()", "read_ahead_kb", "max_sectors_kb", "/proc/buddyinfo"],
+      run() {
+        mode("empty"); setRA(4096); on("op-scan", true); meter(0, "0 B");
+        setC("c-app", "0 B"); setC("c-disk", "0 B"); setC("c-ratio", "–"); setC("c-folio", "–"); setC("c-pmd", "0 kB"); setC("c-dirty", "0 kB");
+        for (let i = 0; i < 10; i++) fly(740, 650, folioX(Math.min(3, Math.floor(i / 2.5))), Y0 + CH / 2, { color: "#f29a1f", r: 5, dur: 1100, delay: i * 260 });
+        const sizes = ["16 KiB", "64 KiB", "256 KiB", "1 MiB", "2 MiB"];
+        sizes.forEach((sz, i) => later(400 + i * 600, () => { $("order").textContent = "readahead ramp from file start: " + sizes.slice(0, i + 1).join(" → "); setC("c-folio", sz); }));
+        later(400 + 5 * 600, () => { mode("large"); setC("c-folio", "2 MiB"); $("order").textContent = "from ~16 MiB on: every folio is 2 MiB (order 9)"; });
+      }
+    },
+    {
+      t: "The mapping uses one PMD per folio",
+      p: "When the process touches the mapping, and its virtual address is 2 MiB-aligned with the file offset, a 2 MiB folio can be mapped by a single PMD entry instead of 512 PTEs. That saves TLB entries. It also means one dirty bit covers all 2 MiB. /proc/meminfo and smaps report this as FilePmdMapped. Setting transparent_hugepage/enabled to never does not prevent it.",
+      r: ["do_set_pmd()", "FilePmdMapped", "CONFIG_TRANSPARENT_HUGEPAGE"],
+      run() {
+        mode("large"); setRA(4096); setC("c-folio", "2 MiB"); setC("c-pmd", "8192 kB"); setC("c-dirty", "0 kB");
+        setC("c-app", "0 B"); setC("c-disk", "0 B"); setC("c-ratio", "–"); meter(0, "0 B");
+        $("ptes").classList.add("dim"); on("pmd", true); $("link").classList.add("on");
+      }
+    },
+    {
+      t: "Small stores dirty the whole folio",
+      p: "A slow writer appends small records, about 150 records of 700 B (105 KB) between two writebacks, all landing in one folio. The first store after the last writeback raises a write fault; page_mkwrite calls folio_mark_dirty() and the whole 2 MiB folio is dirty. XFS (iomap) marks every block of it dirty, also on kernel 6.6+, whose per-block tracking only helps write(2).",
+      r: ["page_mkwrite", "folio_mark_dirty()", "fault_dirty_shared_page()"],
+      run() {
+        mode("large"); setRA(4096); setC("c-folio", "2 MiB"); setC("c-pmd", "8192 kB"); on("pmd", true); $("ptes").classList.add("dim"); $("link").classList.add("on");
+        setC("c-app", "0 B"); setC("c-disk", "0 B"); setC("c-ratio", "–"); setC("c-dirty", "0 kB"); meter(0, "0 B");
+        on("op-store", true);
+        for (let i = 0; i < 5; i++) later(i * 380, () => { fly(561, 120, 721, 216, { color: "#ffd166", dur: 650 }); later(600, () => fly(721, 236, cellX(1, 5), Y0 + CH / 2, { color: "#ffd166", dur: 700 })); });
+        later(1400, () => { cells[1][5].classList.add("touch"); on("fs-mkwrite", true); dirtyFolio(1); cells[1][5].classList.add("touch"); setC("c-dirty", "2048 kB", "hot"); fly(cellX(1, 5), Y0 + CH, 385, 528, { color: "#ffd166", r: 5, dur: 600 }); });
+        [21, 42, 63, 84, 105].forEach((kb, i) => later(1400 + i * 420, () => setC("c-app", kb + " KB")));
+      }
+    },
+    {
+      t: "Writeback sends the whole folio",
+      p: "The flusher wakes every 5 s and writes inodes that have been dirty for over 30 s, or sooner on msync(), fsync() or memory pressure. iomap submits every block of the dirty folio: 2 MiB for 105 KB of new data, about 20×. Our lab measured 19.5× at this rate. Faster writers fill more of each folio per cycle, so the ratio drops (1.6× at 200 small records/s). A lone 8-byte store would be the extreme: 2 MiB for 8 B.",
+      r: ["vm.dirty_expire_centisecs", "iomap_writepage_map()", "tracepoint iomap:iomap_writepage"],
+      run() {
+        mode("large"); setRA(4096); setC("c-folio", "2 MiB"); setC("c-pmd", "8192 kB"); on("pmd", true); $("ptes").classList.add("dim"); $("link").classList.add("on");
+        dirtyFolio(1); cells[1][5].classList.add("touch"); setC("c-app", "105 KB"); setC("c-dirty", "2048 kB", "hot"); setC("c-disk", "0 B"); setC("c-ratio", "–"); meter(0, "0 B");
+        on("fs-flusher", true);
+        later(900, () => { on("fs-iomap", true); fly(folioX(1), Y0 + CH, 766, 551, { color: "#ff4f6d", w: FW, dur: 900 }); });
+        later(1800, () => { fly(766, 574, 740, 690, { color: "#ff4f6d", w: 120, dur: 900 }); leds(true); });
+        later(2700, () => { resetCells(); setC("c-dirty", "0 kB"); setC("c-disk", "2 MiB", "hot"); meter(2097152, "2 MiB"); setC("c-ratio", "≈ 20×", "hot"); leds(false); });
+      }
+    },
+    {
+      t: "Late flag updates rewrite data already on disk",
+      p: "Four folios hold large records that were written and flushed once (8 MiB in, 8 MiB out). Later the application flips a small flag in each record header, for example a ring buffer releasing a backlog of entries in one batch. 96 bytes change, but all four folios go dirty and the 8 MiB is written a second time: 2.0× overall, which matches our lab result. The burst grows with the backlog: thousands of delayed headers in a multi-GiB file mean gigabytes in a few seconds.",
+      r: ["Dirty / Writeback in /proc/meminfo", "iostat -x", "/proc/diskstats"],
+      run() {
+        mode("large"); setRA(4096); setC("c-folio", "2 MiB"); setC("c-pmd", "8192 kB"); on("pmd", true); $("ptes").classList.add("dim");
+        setC("c-app", "8 MiB"); setC("c-disk", "8 MiB"); setC("c-ratio", "1.0×", "ok"); setC("c-dirty", "0 kB"); meter(8388608, "8 MiB");
+        on("op-release", true);
+        const hits = [[0, 3], [1, 11], [2, 6], [3, 13]];
+        hits.forEach(([f, c], i) => later(600 + i * 300, () => fly(757, 120, cellX(f, c), Y0 + CH / 2, { color: "#ffd166", dur: 1000 })));
+        hits.forEach(([f, c], i) => later(1600 + i * 300, () => { cells[f][c].classList.add("touch"); setC("c-app", "8 MiB + " + (i + 1) * 24 + " B"); }));
+        later(3000, () => { hits.forEach(([f, c]) => { dirtyFolio(f); cells[f][c].classList.add("touch"); }); setC("c-dirty", "8192 kB", "hot"); on("fs-mkwrite", true); });
+        later(4200, () => { on("fs-flusher", true); on("fs-iomap", true); [0, 1, 2, 3].forEach((f, i) => fly(folioX(f), Y0 + CH, 740, 690, { color: "#ff4f6d", w: FW * .8, dur: 1200, delay: i * 120 })); leds(true); });
+        later(5700, () => { resetCells(); setC("c-dirty", "0 kB"); setC("c-disk", "16 MiB", "hot"); meter(16777216, "16 MiB"); setC("c-ratio", "2.0×", "hot"); leds(false); });
+      }
+    },
+    {
+      t: "With 4 KiB folios only the touched pages go out",
+      p: "Same records and the same four flag flips after lowering read_ahead_kb, keeping large sequential reads away from the file and evicting it (stop the app, drop the cache, restart), or on a filesystem without large folios such as ext4 before 6.16. Each flip dirties one 4 KiB page, so the second write is 16 KiB and the total stays at 1.0×, as in our lab. Compare FilePmdMapped and the device write rate before and after.",
+      r: ["blockdev --setra", "FilePmdMapped = 0", "ext4 < 6.16"],
+      run() {
+        mode("small"); setRA(128); setC("c-folio", "4 KiB"); setC("c-pmd", "0 kB"); on("pmd", false);
+        setC("c-app", "8 MiB"); setC("c-disk", "8 MiB"); setC("c-ratio", "1.0×", "ok"); setC("c-dirty", "0 kB"); meter(8388608, "8 MiB");
+        on("op-release", true);
+        const hits = [[0, 3], [1, 11], [2, 6], [3, 13]];
+        hits.forEach(([f, c], i) => later(600 + i * 300, () => fly(757, 120, cellX(f, c), Y0 + CH / 2, { color: "#ffd166", dur: 1000 })));
+        hits.forEach(([f, c], i) => later(1600 + i * 300, () => { cells[f][c].classList.add("dirty"); setC("c-app", "8 MiB + " + (i + 1) * 24 + " B"); setC("c-dirty", (i + 1) * 4 + " kB"); }));
+        later(3500, () => { on("fs-flusher", true); on("fs-iomap", true); hits.forEach(([f, c], i) => fly(cellX(f, c), Y0 + CH, 740, 690, { color: "#ff4f6d", r: 5, dur: 1100, delay: i * 120 })); leds(true); });
+        later(4900, () => { resetCells(); setC("c-dirty", "0 kB"); setC("c-disk", "8 MiB + 16 KiB", "ok"); meter(8404992, "8 MiB + 16 KiB"); setC("c-ratio", "1.0×", "ok"); leds(false); });
+      }
+    }
+  ];
+
+  // ---- UI
+  const list = $("steplist");
+  STEPS.forEach((s, i) => { const b = document.createElement("button"); b.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span><span></span>`; b.lastChild.textContent = s.t; b.addEventListener("click", () => { go(i); }); list.appendChild(b); });
+  let cur = 0, playing = !reduce, auto = null;
+  const DWELL = [6000, 8500, 8000, 8000, 9000, 11000, 10000];
+  function go(i) {
+    cur = (i + STEPS.length) % STEPS.length;
+    base(); STEPS[cur].run();
+    $("n-k").textContent = `Step ${cur + 1} of ${STEPS.length}`;
+    $("n-h").textContent = STEPS[cur].t; $("n-p").textContent = STEPS[cur].p;
+    const r = $("n-r"); r.replaceChildren(...STEPS[cur].r.map(x => { const c = document.createElement("code"); c.textContent = x; return c; }));
+    [...list.children].forEach((b, j) => j === cur ? b.setAttribute("aria-current", "step") : b.removeAttribute("aria-current"));
+    schedule();
+  }
+  function schedule() { clearTimeout(auto); if (playing) auto = setTimeout(() => go(cur + 1), DWELL[cur]); }
+  $("next").addEventListener("click", () => go(cur + 1));
+  $("prev").addEventListener("click", () => go(cur - 1));
+  $("play").addEventListener("click", () => { playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; if (playing) go(cur); else clearTimeout(auto); });
+  $("play").textContent = playing ? "Pause" : "Play";
+  document.addEventListener("keydown", (e) => { if (e.key === "ArrowRight") go(cur + 1); if (e.key === "ArrowLeft") go(cur - 1); });
+  go(0);
+})();
+</script>
+
+</body></html>
