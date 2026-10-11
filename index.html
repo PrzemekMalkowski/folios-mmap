@@ -1,455 +1,289 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
-<title>Folio Write Amplification</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<!doctype html>
+<html lang="en" data-theme="dark"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" id="theme-color" content="#0b1323">
+<meta name="author" content="Przemek Malkowski">
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("page-cache-theme")==="light"?"light":"dark";}catch{document.documentElement.dataset.theme="dark";}</script>
+<meta name="description" content="Follow a 64-byte file update through Linux page cache and writeback. Compare buffered write() and shared mmap(), then explore scattered updates across a 1 GiB file.">
+<title>Small Writes, Large Writeback — Linux Page Cache Lab</title>
 <style>
-/* Layout: one wide stack diagram (layers top->bottom, counters on the right), step narration below. Single dark look, by choice. */
-:root {
-  color-scheme: dark;
-  --bg: #0b1424;
-  --bg2: #101d33;
-  --card: #15233d;
-  --line: #2a3b5c;
-  --fg: #e8eefb;
-  --muted: #9aabc9;
-  --app: #7b5cff;
-  --mmu: #27b06a;
-  --cache: #2f8ef5;
-  --fs: #f29a1f;
-  --dev: #5b6f93;
-  --dirty: #ff4f6d;
-  --clean: #3aa0ff;
-  --glow: #7fd3ff;
-  --display: "Red Hat Display", "Segoe UI", system-ui, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-}
-html, body { background: var(--bg); color: var(--fg); }
-body {
-  font-family: var(--display);
-  padding-inline: 16px;
-  padding-block: 28px 40px;
-  background:
-    radial-gradient(1200px 600px at 85% -10%, #17305a 0%, transparent 60%),
-    radial-gradient(900px 500px at -10% 110%, #1a2550 0%, transparent 55%),
-    var(--bg);
-  min-height: 100%;
-}
-.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 22px; }
-header h1 {
-  margin: 0; font-weight: 900; font-size: clamp(30px, 5vw, 56px); letter-spacing: -0.02em; line-height: 1.02;
-  text-wrap: balance;
-}
-header h1 .hot { background: linear-gradient(90deg, #3fb6ff, #2f8ef5); -webkit-background-clip: text; background-clip: text; color: transparent; }
-header p { margin: 10px 0 0; color: var(--muted); font-size: 17px; max-width: 70ch; }
-figure { margin: 0; }
-.stage {
-  background: linear-gradient(180deg, rgba(21,35,61,.85), rgba(14,24,44,.85));
-  border: 1px solid var(--line); border-radius: 22px; padding: 14px; overflow-x: auto;
-}
-svg#stack { display: block; width: 100%; min-width: 760px; height: auto; font-family: var(--display); }
-figcaption { color: var(--muted); font-size: 13px; margin-top: 8px; }
+:root{color-scheme:dark;--bg:#0b1323;--panel:#141f34;--panel2:#101a2d;--line:#2a3851;--text:#edf3ff;--muted:#a5b3c9;--blue:#53b9ff;--amber:#ffb66b;--violet:#ad9bff;--green:#6ee7b7;--clean:#25344d;--radius:18px;--mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;--glow:#152644;--nav-bg:#0b1323ef;--inset:#0b1526;--surface:#111c30;--stage-bg:#152139;--controls-bg:#18263d;--button-bg:#223451;--hover-bg:#2c4265;--selected-bg:#253958;--selected-line:#4e729b;--control-line:#3a5277;--primary-bg:#1475b9;--primary-line:#64bafd;--track-bg:#28374e;--pte-bg:#3c4c65;--violet-wash:#48386e55;--amber-wash:#b4803430;--violet-line:#9984df;--amber-line:#bf915a;--code-text:#bdcce5;--soft-text:#c8bee9;--note-bg:#253351;--note-text:#d5def0;--tile-fill:#8374c8;--ra-fill:#527faf;--ra-line:#73b4e2;--active-line:#6c87ab;--active-shadow:#637fa03b;--active-glow:#4e94f510;--selection-ring:#ffffff;}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:94px}body{margin:0;background:radial-gradient(ellipse at 84% 0%,var(--glow) 0,transparent 38%),var(--bg);color:var(--text);font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:var(--blue);text-underline-offset:4px}button,input,select{font:inherit}button,a,input,select,summary{-webkit-tap-highlight-color:transparent}button{cursor:pointer}button:disabled{cursor:default;opacity:.4}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--blue);outline-offset:4px}button{color:var(--text)}h1,h2,h3,p{margin:0}h1,h2,h3{line-height:1.13;letter-spacing:-.04em}h1{font-size:clamp(42px,5.3vw,78px);font-weight:790;max-width:850px}h2{font-size:clamp(29px,3vw,43px);font-weight:750}h3{font-size:22px;font-weight:700}p{color:var(--muted)}code{font: .88em/1.5 var(--mono);overflow-wrap:anywhere}strong{color:var(--text)}.wrap{max-width:1264px;margin:auto;padding:0 32px}.skip{position:absolute;top:-100px;left:12px;z-index:10;background:var(--text);color:var(--bg);padding:10px}.skip:focus{top:10px}.nav{position:sticky;top:0;z-index:20;background:var(--nav-bg);border-bottom:1px solid var(--line);backdrop-filter:blur(16px)}.nav-inner{display:flex;justify-content:space-between;align-items:center;gap:20px;min-height:72px}.brand{display:flex;align-items:center;gap:10px;color:var(--text);font-size:14px;font-weight:700;letter-spacing:.02em;text-decoration:none;white-space:nowrap}.brand-icon{display:grid;grid-template-columns:repeat(3,5px);gap:3px}.brand-icon i{width:5px;height:5px;background:var(--blue);border-radius:1px}.brand-icon i:nth-child(3n){background:var(--violet)}.nav-links{display:flex;align-items:center;gap:26px}.nav-links a{font-size:13px;color:var(--muted);text-decoration:none;white-space:nowrap}.nav-links a:hover{color:var(--text)}.hero{padding:64px 0 44px}.eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:19px;font:11px/1.4 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--blue)}.eyebrow:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}.hero h1 em{font-style:normal;color:var(--blue)}.hero-description{max-width:760px;margin:22px 0 25px;font-size:18px;line-height:1.7}.hero-description code{color:var(--text)}.pills{display:flex;flex-wrap:wrap;gap:8px}.pill{font:11px/1.4 var(--mono);color:var(--muted);border:1px solid var(--line);padding:7px 10px;border-radius:6px;background:var(--surface)}.hero-note{margin-top:14px;font-size:12px}.section{padding:35px 0 65px;border-bottom:1px solid var(--line)}.section-head{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;margin-bottom:28px}.section-no{font:11px/1.5 var(--mono);letter-spacing:.12em;color:var(--violet);margin-bottom:10px}.section-head p{max-width:460px;font-size:14px}.blue{color:var(--blue)}.amber{color:var(--amber)}.violet{color:var(--violet)}.muted{color:var(--muted)}.mono{font-family:var(--mono)}.small{font-size:12px;line-height:1.6}.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--button-bg);border:1px solid var(--control-line);border-radius:9px;padding:9px 14px;font-size:13px;font-weight:600;text-decoration:none;color:var(--text);line-height:1.4}.button:hover{background:var(--hover-bg)}.button.primary{background:var(--primary-bg);border-color:var(--primary-line);color:#fff}.button.quiet{background:transparent;border-color:var(--line)}.badge{font:10px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);padding:4px 7px;border-radius:5px;white-space:nowrap}.walk-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:22px;align-items:start}.story{position:sticky;top:93px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}.story-top{padding:24px 22px}.step-kicker{font:11px/1.4 var(--mono);letter-spacing:.09em;color:var(--blue);margin-bottom:10px}.story h3{font-size:25px;margin-bottom:13px}.story-copy{font-size:14px;line-height:1.7;min-height:167px}.story-takeaway{margin-top:18px;border-left:2px solid var(--violet);padding-left:12px;font-size:12px;line-height:1.6;color:var(--soft-text)}.play-controls{display:flex;gap:7px;margin:22px 0 0}.play-controls .button{flex:1;padding:8px}.steps{list-style:none;padding:12px;margin:0;border-top:1px solid var(--line);display:grid;gap:5px}.steps button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:10px 11px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);font-size:12px;line-height:1.4}.steps button:hover{background:var(--hover-bg)}.steps button[aria-current="step"]{background:var(--selected-bg);border-color:var(--selected-line);color:var(--text)}.steps .num{font:11px var(--mono);color:var(--blue)}.stack{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px;overflow:hidden}.stack-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}.stack-header .small{max-width:370px}.compare-heading{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px}.path-name{font:14px/1.5 var(--mono);font-weight:600;display:flex;align-items:center;gap:8px}.path-name:before{content:"";width:7px;height:7px;background:currentColor;border-radius:50%}.path-sub{font-size:11px;color:var(--muted);margin-top:3px}.stack-stage{position:relative;border:1px solid var(--line);background:var(--stage-bg);border-radius:11px;padding:15px;margin:0 0 10px;transition:border-color .2s,box-shadow .2s}.stack-stage.active{border-color:var(--active-line);box-shadow:0 0 0 1px var(--active-shadow),0 0 24px var(--active-glow)}.stack-stage.future{opacity:.55}.stage-label{display:flex;align-items:center;gap:9px;color:var(--violet);font:10px/1.4 var(--mono);letter-spacing:.07em;text-transform:uppercase;margin-bottom:10px}.stage-label b{display:grid;place-items:center;width:18px;height:18px;border:1px solid var(--violet-line);border-radius:4px;font-weight:400}.columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}.columns>.column+.column{border-left:1px solid var(--line);padding-left:23px}.code-line{display:block;font:11px/1.5 var(--mono);color:var(--text);padding:8px 9px;background:var(--inset);border-radius:5px;margin-bottom:7px;overflow-wrap:anywhere}.stack-stage p{font-size:12px;line-height:1.55}.cell-map{width:100%;height:auto;display:block;margin:10px 0 8px}.cell-map rect{transition:fill .18s}.mini-number{font:700 18px/1.3 var(--mono)}.mini-number small{font:11px system-ui;color:var(--muted)}.legend{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;font-size:11px;color:var(--muted)}.legend-item{display:inline-flex;gap:6px;align-items:center}.swatch{display:inline-block;width:8px;height:8px;border-radius:2px;flex-shrink:0}.swatch.blue-bg{background:var(--blue)}.swatch.amber-bg{background:var(--amber)}.swatch.clean-bg{background:var(--clean);border:1px solid var(--control-line)}.swatch.violet-bg{background:var(--violet)}.chain{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font:10px/1.6 var(--mono);margin:9px 0}.chain code{background:var(--inset);border:1px solid var(--control-line);border-radius:4px;padding:4px 6px;font-size:10px}.chain span{color:var(--muted)}.shared-note{color:var(--violet);font-size:11px}.age-gate{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--inset);border-radius:6px;padding:9px 11px;margin-top:9px;font-size:11px}.age-gate .yes{color:var(--green)}.disk-number{font-size:30px;font-weight:730;letter-spacing:-.03em;line-height:1.2}.disk-label{font-size:10px;color:var(--muted);margin:4px 0 10px}.bar-track{height:8px;background:var(--track-bg);border-radius:3px;overflow:hidden}.bar{height:100%;width:0;background:var(--blue);transition:width .3s}.bar.amber-fill{background:var(--amber)}.result-callout{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0 0;color:var(--muted);font-size:11px}.result-callout strong{font:700 23px var(--mono);color:var(--amber);white-space:nowrap}.scope{font-size:12px;color:var(--muted);margin-top:18px}.scope summary{cursor:pointer;color:var(--text)}.scope p{margin:9px 0;line-height:1.65}.scope code{color:var(--code-text)}.explorer{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}.controls{display:grid;grid-template-columns:1.45fr 1fr 1fr 1.15fr;gap:20px;align-items:start;padding:24px;background:var(--controls-bg);border-bottom:1px solid var(--line)}.control label,.control-label{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin-bottom:9px}.control label output{color:var(--text);font:12px var(--mono)}select{width:100%;background:var(--inset);color:var(--text);border:1px solid var(--control-line);border-radius:7px;padding:9px 25px 9px 10px;font-size:12px;min-height:38px}input[type=range]{width:100%;margin:10px 0 0;accent-color:var(--blue);cursor:pointer}input[type=number]{max-width:83px;padding:6px 7px;background:var(--inset);border:1px solid var(--control-line);border-radius:6px;color:var(--text);font:12px var(--mono)}.range-labels{display:flex;justify-content:space-between;font:9px var(--mono);color:var(--muted)}.stats{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}.stat{padding:22px 24px;border-right:1px solid var(--line)}.stat:last-child{border:0}.stat-label{font-size:11px;color:var(--muted);margin-bottom:6px}.stat-value{font-size:clamp(25px,3vw,37px);line-height:1.2;letter-spacing:-.04em;font-weight:750;white-space:nowrap;font-variant-numeric:tabular-nums}.stat-sub{font-size:10px;color:var(--muted);margin-top:5px}.explorer-body{padding:25px;display:grid;grid-template-columns:1.13fr 1fr;gap:28px}.map-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px}.map-title h3{font-size:17px;letter-spacing:-.02em}.map-title .button{padding:6px 8px;font-size:10px;white-space:nowrap}.file-grid{display:grid;grid-template-columns:repeat(32,minmax(0,1fr));gap:3px;margin-top:17px}.file-tile{aspect-ratio:1;background:var(--clean);border:1px solid transparent;border-radius:2px;padding:0;min-width:0;line-height:0}.file-tile.touched{background:var(--tile-fill);border-color:var(--violet-line)}.file-tile.selected{outline:2px solid var(--selection-ring);outline-offset:1px;z-index:1}.file-tile:hover{border-color:var(--selection-ring);filter:brightness(1.4)}.map-axis{display:flex;justify-content:space-between;color:var(--muted);font:9px var(--mono);margin:9px 0 14px}.map-meta{font-size:12px;margin-top:12px}.zoom{background:var(--inset);border:1px solid var(--line);padding:18px;border-radius:11px;align-self:start}.zoom-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:13px}.zoom-heading h3{font-size:16px;letter-spacing:-.02em}.zoom-heading label{font-size:10px;color:var(--muted)}.zoom-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-top:14px}.zoom-caption{font:10px/1.6 var(--mono);margin-bottom:7px}.zoom-bytes{font-size:17px;font-weight:700;line-height:1.2}.zoom .cell-map{margin-top:8px}.formula{padding:18px 25px;border-top:1px solid var(--line);background:var(--surface);display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:12px}.formula code{color:var(--text);font-size:11px}.explorer-bottom{margin-top:15px;display:flex;gap:20px;justify-content:space-between;align-items:start}.explorer-bottom p{max-width:800px;font-size:12px}.explorer-bottom .badge{color:var(--violet)}.mapping-layout{display:grid;grid-template-columns:1fr 1fr;gap:24px}.mapping-card,.mapping-copy{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:25px}.segmented{display:flex;background:var(--inset);border:1px solid var(--line);border-radius:9px;padding:4px;margin-bottom:20px}.segmented button{flex:1;border:1px solid transparent;border-radius:6px;padding:9px 12px;background:transparent;font-size:12px;color:var(--muted)}.segmented button[aria-pressed="true"]{background:var(--selected-bg);border-color:var(--selected-line);color:var(--text)}.mapping-label{font:10px var(--mono);color:var(--muted);margin:0 0 10px}.pmd-entry{min-height:77px;display:flex;align-items:center;justify-content:center;flex-direction:column;border:1px solid var(--violet-line);background:var(--violet-wash);border-radius:7px;color:var(--violet);font:13px/1.7 var(--mono)}.pte-entries{display:grid;grid-template-columns:repeat(32,1fr);gap:3px;min-height:77px}.pte-entries i{background:var(--pte-bg);border-radius:1px}.pte-entries i.dirty{background:var(--amber)}.mapping-arrow{text-align:center;color:var(--muted);font:20px var(--mono);margin:10px}.mapping-folio{padding:13px 16px;border:1px solid var(--amber-line);background:var(--amber-wash);border-radius:7px;color:var(--amber);font-size:13px;text-align:center}.mapping-folio .small{display:block;color:var(--muted);margin-top:4px}.mapping-explanation{min-height:68px;font-size:12px;margin-top:16px}.mapping-copy h3{font-size:21px;margin-bottom:15px}.mapping-copy p{font-size:14px;margin-bottom:14px}.mapping-copy .callout{padding:13px 15px;border-radius:8px;background:var(--note-bg);border:1px solid var(--selected-line);font-size:13px;color:var(--note-text)}.mapping-copy details{font-size:12px;margin-top:17px}.mapping-copy summary{cursor:pointer;color:var(--blue)}.mapping-copy details p{font-size:12px;margin:12px 0 0}.sources-intro{max-width:870px;font-size:14px;margin-bottom:25px}.sources-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 36px}.source{padding:19px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:24px 1fr;gap:9px}.source-number{font:11px var(--mono);color:var(--violet);padding-top:4px}.source a{font-size:14px;font-weight:600;text-decoration:none;color:var(--text);display:inline-block}.source a:hover{color:var(--blue)}.source p{font-size:12px;margin-top:6px}.source small{display:block;color:var(--blue);font:10px/1.5 var(--mono);margin-top:7px}.source-detail{margin-top:24px;border:1px solid var(--line);padding:16px 19px;border-radius:10px;font-size:13px}.source-detail summary{cursor:pointer;color:var(--text)}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;margin-top:15px;font-size:12px;text-align:left}th,td{padding:11px 9px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:500}td:first-child{width:31%}td a{font:11px var(--mono)}.footer{padding:28px 0 36px;display:flex;justify-content:space-between;align-items:center;gap:20px;font-size:11px;color:var(--muted)}.footer p{max-width:740px}.footer a{white-space:nowrap}.noscript{margin:20px;padding:15px;border:1px solid var(--amber)}[hidden]{display:none!important}
+@media(max-width:1050px){.wrap{padding:0 24px}.walk-layout{grid-template-columns:265px minmax(0,1fr);gap:16px}.stack{padding:17px}.story-top{padding:20px 18px}.controls{gap:13px;padding:20px}.nav-links{gap:17px}.stat{padding:20px}.explorer-body{gap:20px;padding:20px}.columns{gap:16px}.columns>.column+.column{padding-left:15px}.story-copy{min-height:190px}}
+@media(max-width:820px){.walk-layout{grid-template-columns:1fr}.story{position:static}.story-top{display:grid;grid-template-columns:1fr auto;gap:0 20px}.story-copy{min-height:0;grid-column:1/-1}.story-takeaway{grid-column:1/-1}.play-controls{grid-column:2;grid-row:1/3;align-self:center;margin:0}.steps{grid-template-columns:repeat(3,1fr)}.steps button{height:100%;padding:9px}.section-head{align-items:start;flex-direction:column;gap:15px}.section-head p{max-width:650px}.controls{grid-template-columns:1fr 1fr}.explorer-body{grid-template-columns:1fr}.file-grid{grid-template-columns:repeat(64,minmax(0,1fr));gap:3px}.zoom-columns{gap:26px}.mapping-layout{grid-template-columns:1fr}.mapping-explanation{min-height:0}.nav-links a.download-link{display:none}.hero{padding-top:42px}.hero-description{font-size:16px}.sources-grid{gap:0 24px}.stat-value{font-size:29px}.formula{padding:17px 20px}}
+@media(max-width:570px){.wrap{padding:0 16px}.nav-inner{min-height:62px;gap:12px}.brand{font-size:11px}.nav-links{gap:13px}.nav-links a{font-size:10px}.nav-links a.sources-link{display:none}.brand-icon{grid-template-columns:repeat(3,4px);gap:2px}.brand-icon i{width:4px;height:4px}.hero{padding:34px 0 27px}.hero h1{font-size:44px}.hero-description{font-size:15px;margin:18px 0}.hero-note{font-size:11px}.section{padding:25px 0 40px}.section-no{font-size:10px}.section-head{margin-bottom:20px}.story-top{display:block;padding:19px}.story h3{font-size:23px}.play-controls{max-width:300px;margin-top:18px}.story-copy{font-size:13px}.steps{gap:2px;padding:8px}.steps button{font-size:10px;gap:6px;padding:7px 5px;align-items:start}.steps .num{font-size:10px}.stack{padding:13px}.stack-header{display:block}.stack-header .badge{display:inline-block;margin-top:8px}.compare-heading{gap:9px}.path-name{font-size:12px}.path-sub{font-size:10px}.stack-stage{padding:11px}.columns{gap:11px}.columns>.column+.column{padding-left:10px}.code-line{font-size:9px;padding:6px}.stack-stage p{font-size:11px}.mini-number{font-size:15px}.mini-number small{font-size:9px;display:block;margin-top:4px}.legend{font-size:10px;gap:7px 12px}.disk-number{font-size:25px}.age-gate{font-size:10px}.controls{padding:17px;gap:16px}.control label{font-size:10px}select{font-size:11px;padding-left:7px}.stats{grid-template-columns:1fr 1fr}.stat{padding:17px;border-bottom:1px solid var(--line)}.stat:nth-child(2){border-right:0}.stat:nth-child(3),.stat:nth-child(4){border-bottom:0}.stat-value{font-size:32px}.explorer-body{padding:17px}.file-grid{grid-template-columns:repeat(32,minmax(0,1fr));gap:3px}.zoom{padding:13px}.zoom-columns{gap:13px}.formula{grid-template-columns:1fr;gap:9px;padding:17px}.explorer-bottom{flex-direction:column;gap:12px}.mapping-card,.mapping-copy{padding:20px}.sources-grid{grid-template-columns:1fr}.footer{align-items:start;flex-direction:column}.source-detail{padding:14px}.source a{font-size:13px}.source p{font-size:11px}.table-scroll{margin:0 -5px}.table-scroll table{min-width:540px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important;animation:none!important}}
+@media print{.nav,.play-controls,.steps,.controls,.button,.segmented{display:none}body{background:#fff;color:#111}p,.muted{color:#444}.wrap{max-width:none}.walk-layout,.mapping-layout,.explorer-body{display:block}.story{position:static;margin-bottom:20px}.stack-stage.future{opacity:1}.section{break-inside:avoid}.story,.stack,.explorer,.mapping-card,.mapping-copy{background:#fff;border-color:#999}.mapping-copy{margin-top:20px}}
+.ra-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:25px}.ra-presets{display:flex;gap:12px;margin-bottom:22px}.ra-presets button{flex:1;text-align:left;background:var(--inset);border:1px solid var(--line);border-radius:10px;padding:16px;color:var(--muted)}.ra-presets button[aria-pressed="true"]{background:var(--selected-bg);border-color:var(--blue);color:var(--text)}.ra-presets strong{display:block;font-size:20px;margin-top:3px}.ra-flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.ra-node{border-top:2px solid var(--violet);padding:14px 0 7px}.ra-node .small{font-size:11px}.ra-node h3{font-size:17px;margin:7px 0 10px;letter-spacing:-.02em}.ra-node p{font-size:12px}.ra-node .value{font:700 24px var(--mono);color:var(--blue);margin:10px 0}.ra-node:last-child .value{color:var(--amber)}.ra-bars{display:flex;gap:3px;height:33px;margin:12px 0;background:var(--inset);padding:3px;border-radius:5px}.ra-bars i{flex:1;background:var(--ra-fill);border:1px solid var(--ra-line);border-radius:2px}.ra-observation{margin-top:18px;padding:13px 15px;background:var(--violet-wash);border-left:2px solid var(--violet);font-size:12px}.ra-footer{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:19px;padding-top:17px;border-top:1px solid var(--line)}.ra-footer p{font-size:12px;max-width:860px}.ra-checks{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:12px}.ra-checks pre{white-space:pre-wrap;background:var(--inset);border:1px solid var(--line);padding:13px;border-radius:8px;color:var(--text);font:11px/1.8 var(--mono);overflow-wrap:anywhere}.ra-checks h3{font-size:15px;margin-top:8px}.nav-links{gap:20px}.ra-explorer-note{font-size:12px;margin:0 0 16px;color:var(--muted)}
+@media(max-width:1050px){.nav-links{gap:13px}.nav-links a{font-size:12px}.ra-flow{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:820px){.ra-checks{grid-template-columns:1fr;gap:10px}.ra-footer{align-items:start;flex-direction:column}}
+@media(max-width:570px){.nav-links a.mapping-link{display:none}.nav-links a{font-size:10px}.ra-panel{padding:17px}.ra-presets{gap:9px}.ra-presets button{padding:11px}.ra-presets strong{font-size:17px}.ra-presets .small{font-size:10px}.ra-flow{gap:15px}.ra-node h3{font-size:15px}.ra-node .value{font-size:20px}.ra-node p{font-size:11px}}
 
-/* narration + controls */
-.panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: start; }
-@media (max-width: 760px) { .panel { grid-template-columns: 1fr; } }
-.nav {
-  display: grid; gap: 10px; align-content: start;
-  background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px;
-}
-.narr { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px; min-width: 0; }
-.narr .k { font-family: var(--mono); font-size: 12px; color: var(--glow); letter-spacing: .08em; text-transform: uppercase; }
-.narr h2 { margin: 6px 0 8px; font-size: 24px; font-weight: 700; text-wrap: balance; }
-.narr p { margin: 0; font-size: 16px; line-height: 1.55; max-width: 72ch; color: #d3dcf0; }
-.narr .refs { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
-.narr code { font-family: var(--mono); font-size: 12.5px; background: #0d1830; border: 1px solid var(--line); color: #bfe3ff; padding: 3px 8px; border-radius: 8px; }
-.btns { display: flex; gap: 8px; }
-button {
-  font: 600 14px var(--display); color: var(--fg); background: #1c2c4c; border: 1px solid #34507e;
-  border-radius: 12px; padding: 10px 14px; cursor: pointer;
-}
-button:hover { background: #243860; }
-button:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
-button.primary { background: var(--cache); border-color: #64adff; }
-.steps { display: grid; gap: 6px; }
-.steps button { text-align: left; font-weight: 500; font-size: 13px; padding: 7px 10px; background: transparent; border-color: var(--line); color: var(--muted); display: flex; gap: 8px; }
-.steps button .n { font-family: var(--mono); color: #6f86ad; }
-.steps button[aria-current="step"] { color: var(--fg); border-color: var(--glow); background: #15284a; }
-.steps button[aria-current="step"] .n { color: var(--glow); }
-
-/* ---- SVG styling ---- */
-.band-label { font-weight: 700; font-size: 15px; fill: #fff; }
-.band-sub { font-size: 12px; fill: var(--muted); }
-.chip rect { fill: #0f1b31; stroke: #3a4f77; stroke-width: 1.2; transition: stroke .4s, fill .4s; }
-.chip text { font-size: 13px; fill: #dce6fa; }
-.chip text.m { font-family: var(--mono); font-size: 12px; }
-.chip.on rect { stroke: var(--glow); fill: #14305a; filter: url(#glow); }
-.cell { fill: #1d3d6e; stroke: #0b1424; stroke-width: 1; transition: fill .35s; }
-.cell.dirty { fill: var(--dirty); }
-.cell.touch { fill: #ffd166; }
-.folio { fill: none; stroke: var(--clean); stroke-width: 2.2; rx: 6; transition: stroke .35s, opacity .4s; }
-.folio.dirty { stroke: var(--dirty); filter: url(#glowRed); }
-.small .folio { opacity: 0; }
-.small .cell { stroke: #3c78c9; stroke-width: 1.2; }
-.cellbox { opacity: 0; transition: opacity .4s; }
-.empty .cell { fill: #16243d; }
-.empty .folio { opacity: 0; }
-.flabel { font-size: 12px; fill: var(--muted); font-family: var(--mono); }
-.pte { fill: #1f5a3f; transition: opacity .4s; }
-.pmd rect { fill: #13392a; stroke: var(--mmu); stroke-width: 1.5; transition: fill .4s; }
-.pmd text { font-size: 12.5px; fill: #c9f2dc; font-family: var(--mono); }
-.pmd.on rect { fill: #1f7a4c; filter: url(#glowGreen); }
-.ptes.dim { opacity: .25; }
-.link { stroke: var(--mmu); stroke-width: 2; stroke-dasharray: 5 5; fill: none; opacity: 0; transition: opacity .4s; }
-.link.on { opacity: 1; animation: dash 1s linear infinite; }
-@keyframes dash { to { stroke-dashoffset: -20; } }
-.ra rect.track { fill: #0f1b31; stroke: #3a4f77; }
-.ra rect.win { fill: var(--fs); opacity: .85; transition: width .8s ease; }
-.ra text { font-size: 12px; fill: #dfe7f7; font-family: var(--mono); }
-.disk rect { fill: #1a2945; stroke: #3c5583; }
-.disk .led { fill: #36d17a; }
-.disk .led.busy { fill: #ff8a3d; animation: blink .25s steps(2) infinite; }
-@keyframes blink { 50% { opacity: .2; } }
-.meter { fill: var(--dirty); transition: width .9s ease; }
-.cnt-k { font-size: 12.5px; fill: var(--muted); }
-.cnt-v { font-size: 20px; font-weight: 700; fill: #fff; font-family: var(--mono); }
-.cnt-v.hot { fill: var(--dirty); }
-.cnt-v.ok { fill: #4be39a; }
-.packet { pointer-events: none; }
-.order { font-family: var(--mono); font-size: 13px; fill: #ffd27a; }
-@media (prefers-reduced-motion: reduce) {
-  .link.on, .disk .led.busy { animation: none; }
-  .cell, .folio, .ra rect.win, .meter { transition: none; }
-}
+:root[data-theme="light"]{color-scheme:light;--bg:#f4f7fc;--panel:#ffffff;--panel2:#f0f4fa;--line:#cbd5e3;--text:#14253e;--muted:#526078;--blue:#00649b;--amber:#994c08;--violet:#6548a3;--green:#076c4b;--clean:#dce3ed;--glow:#e1eafa;--nav-bg:#f4f7fcf2;--inset:#f0f4fa;--surface:#ffffff;--stage-bg:#f8faff;--controls-bg:#eaf0f9;--button-bg:#e4edf9;--hover-bg:#d6e4f7;--selected-bg:#dce9fb;--selected-line:#6086b5;--control-line:#8b9eb9;--primary-bg:#0867a5;--primary-line:#0867a5;--track-bg:#dbe4f0;--pte-bg:#acbad0;--violet-wash:#eee9f9;--amber-wash:#fff0dc;--violet-line:#917abc;--amber-line:#b87937;--code-text:#294b77;--soft-text:#624c89;--note-bg:#e9f0fc;--note-text:#273e60;--tile-fill:#8c75bb;--ra-fill:#80a6d4;--ra-line:#3e6d9f;--active-line:#316aa8;--active-shadow:#316aa820;--active-glow:#316aa810;--selection-ring:#132746}
+.theme-toggle{white-space:nowrap;font-size:12px;flex-shrink:0}.tracking-comparison{margin-top:24px;border:1px solid var(--line);background:var(--panel);padding:23px;border-radius:var(--radius)}.tracking-comparison h3{font-size:21px;margin-bottom:12px}.tracking-comparison th:first-child,.tracking-comparison td:first-child{width:25%}.tracking-comparison td:last-child{width:25%}.file-tile.selected{outline-color:var(--selection-ring)}:root[data-theme="light"] .stack-stage.future{opacity:1}
+@media(max-width:820px){.nav-inner{flex-wrap:wrap;gap:0;padding-top:12px;padding-bottom:10px}.theme-toggle{margin-left:auto}.nav-links{order:3;width:100%;justify-content:space-between;gap:10px;margin-top:9px}.nav-links a{font-size:12px}html{scroll-padding-top:125px}}
+@media(max-width:570px){.theme-toggle{font-size:11px;padding:7px 10px}.tracking-comparison{padding:17px}.tracking-comparison h3{font-size:19px}.nav-links a{font-size:11px}}
+@media print{.theme-toggle{display:none}}
 </style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<nav class="nav" aria-label="Main navigation"><div class="wrap nav-inner">
+  <a class="brand" href="#top"><span class="brand-icon" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>PAGE CACHE LAB</a>
+  <div class="nav-links"><a href="#readahead">Readahead</a><a href="#walkthrough">Walkthrough</a><a href="#explorer">1 GiB explorer</a><a class="mapping-link" href="#mapping">PMD vs PTE</a><a class="sources-link" href="#sources">Sources</a></div><button class="button quiet theme-toggle" type="button" id="theme-toggle" aria-label="Use light mode">Light mode</button>
+</div></nav>
+<main id="main" class="wrap">
+<header id="top" class="hero">
+  <div class="eyebrow">Linux internals, made visible</div>
+  <h1>Small writes.<br><em>Large writeback.</em></h1>
+  <p class="hero-description">The same 64-byte file update can lead to <strong class="blue">4 KiB</strong> or <strong class="amber" id="hero-mmap">2 MiB</strong> of data written to disk. Follow <code>write()</code> and shared <code>mmap()</code> through the page cache to see where the difference appears.</p>
+  <div class="pills"><span class="pill">XFS / iomap model</span><span class="pill">4 KiB filesystem blocks</span><span class="pill">Whole-folio mmap dirtying</span><span class="pill">Illustration, not a benchmark</span></div>
+  <p class="hero-note">A model of the behavior discussed in the linked kernel sources. Actual results depend on filesystem, kernel, cache folio sizes, and workload.</p>
+</header>
+<noscript><p class="noscript">Enable JavaScript for the walkthrough and explorer. The explanatory text and source links below remain available.</p></noscript>
 
-<div class="wrap">
-  <header>
-    <h1>One small store, <span class="hot">2 MiB</span> to disk</h1>
-    <p>How readahead-built large folios turn sparse writes to a memory-mapped file into whole-folio writeback on Linux (XFS, kernel 5.18+). Step through the path from the application to the disk.</p>
-  </header>
-
-
-  <section class="panel">
-    <div class="narr" aria-live="polite">
-      <div class="k" id="n-k">Step 1 of 7</div>
-      <h2 id="n-h"></h2>
-      <p id="n-p"></p>
-      <div class="refs" id="n-r"></div>
+<section id="readahead" class="section" aria-labelledby="ra-title">
+  <div class="section-head"><div><div class="section-no">00 / BEFORE THE WRITE</div><h2 id="ra-title">A read can set up<br>the next write.</h2></div><p>Device readahead helps shape the cache before a small write arrives. A wider read window can accommodate larger folios—and a larger later mmap writeback footprint.</p></div>
+  <div class="ra-panel">
+    <div class="ra-presets" role="group" aria-label="Readahead comparison profile"><button id="ra-baseline" aria-pressed="false"><span class="small">Single-device baseline example</span><strong>128 KiB readahead</strong><span class="small">Compare using 128 KiB cache folios</span></button><button id="ra-array" aria-pressed="true"><span class="small">Reported multi-NVMe software RAID case</span><strong>2304 KiB readahead</strong><span class="small">Compare using 2 MiB cache folios</span></button></div>
+    <div class="ra-flow">
+      <div class="ra-node"><div class="section-no">A / DEVICE SETUP</div><h3>Geometry influences readahead</h3><p id="ra-device-copy">An array can advertise a large optimal I/O size. The block layer can raise readahead to at least twice that size.</p><p class="small" style="margin-top:10px"><code>optimal_io_size → read_ahead_kb</code></p></div>
+      <div class="ra-node"><div class="section-no">B / READ WINDOW</div><h3>Earlier reads fill the cache</h3><div class="value" id="ra-window">2304 KiB</div><p id="ra-window-copy">576 × 4 KiB pages fit in this window.</p><p class="small" style="margin-top:8px">For example, a sequential scan before the updates.</p></div>
+      <div class="ra-node"><div class="section-no">C / CACHE ALLOCATION</div><h3>A larger folio can fit</h3><div class="value" id="ra-folio">2 MiB</div><div class="ra-bars" id="ra-bars" role="img" aria-label="One 2 MiB folio spans a 2 MiB region"><i></i></div><p id="ra-folio-copy">A 2 MiB folio can fit in 2304 KiB. Some allocations can reach this size; others can be smaller.</p></div>
+      <div class="ra-node"><div class="section-no">D / LATER 64-BYTE EDIT</div><h3>Whole-folio dirtying</h3><div class="value" id="ra-ratio">512×</div><p><span class="amber" id="ra-mmap">2 MiB</span> mmap writeback<br>versus <span class="blue">4 KiB</span> with write().</p><p class="small" style="margin-top:8px">Ratio of file-data bytes, given the selected folio size.</p></div>
     </div>
-    <nav class="nav" aria-label="Walkthrough steps">
-      <div class="btns">
-        <button id="prev" aria-label="Previous step">◀ Prev</button>
-        <button id="play" class="primary" aria-label="Play or pause">Pause</button>
-        <button id="next" aria-label="Next step">Next ▶</button>
-      </div>
-      <div class="steps" id="steplist"></div>
-    </nav>
-  </section>
+    <p class="ra-observation"><strong>The reported observation:</strong> software RAID across many NVMe drives automatically obtained <code>read_ahead_kb = 2304</code>, and some folios reached 2 MiB. This is consistent with the source mechanisms; the array’s exact RAID level and geometry were not provided.</p>
+    <div class="ra-footer"><p><strong id="ra-assumption">Comparison assumption: 2 MiB folios.</strong> The preset updates the walkthrough and explorer below. It illustrates the consequence of a folio size; it does not predict every allocation or model a mixed-size cache.</p><a class="button quiet" href="#walkthrough">Follow the write ↓</a></div>
+  </div>
+  <details class="scope"><summary>Why read_ahead_kb is influential, but not an absolute folio-size cap</summary><div class="ra-checks"><div><h3>Window size is one constraint</h3><p>In <code>page_cache_ra_order()</code>, allocation order is constrained by the readahead window and the mapping’s supported orders. Alignment, file boundaries, and allocation success can reduce actual sizes. With an ordinary 128 KiB window, 128 KiB fits; 2 MiB does not.</p><p>A large read request can extend the window toward <code>bdi-&gt;io_pages</code>, derived from <code>max_sectors_kb</code>. <code>POSIX_FADV_SEQUENTIAL</code> also doubles a file’s readahead limit. Therefore, 128 KiB in sysfs is not a universal ceiling. Changing it does not split folios already resident in the cache.</p></div><div><h3>Inspect the filesystem-facing device</h3><p>Check the md or dm device backing the filesystem, as well as its members. Example read-only checks; replace the path and <code>md0</code> with the correct names:</p><pre>findmnt -no SOURCE,FSTYPE --target /path/to/journal
+cat /sys/class/block/md0/queue/read_ahead_kb
+cat /sys/class/block/md0/queue/optimal_io_size
+cat /sys/class/block/md0/queue/max_sectors_kb</pre><p>The two <code>_kb</code> values use KiB; <code>optimal_io_size</code> uses bytes. A default of 128 KiB is a baseline, not a guarantee for every disk.</p></div></div></details>
+</section>
 
-  <figure>
-    <div class="stage">
-      <svg id="stack" viewBox="0 0 1200 800" role="img" aria-label="Kernel I/O stack: application, page tables, page cache with four 2 MiB folios, filesystem writeback and block device, with counters for bytes changed and bytes written.">
-        <defs>
-          <linearGradient id="gApp" x1="0" x2="1"><stop offset="0" stop-color="#7b5cff" stop-opacity=".28"/><stop offset="1" stop-color="#5a3fe0" stop-opacity=".12"/></linearGradient>
-          <linearGradient id="gMmu" x1="0" x2="1"><stop offset="0" stop-color="#27b06a" stop-opacity=".26"/><stop offset="1" stop-color="#1c8a52" stop-opacity=".10"/></linearGradient>
-          <linearGradient id="gCache" x1="0" x2="1"><stop offset="0" stop-color="#2f8ef5" stop-opacity=".28"/><stop offset="1" stop-color="#1f6fd0" stop-opacity=".10"/></linearGradient>
-          <linearGradient id="gFs" x1="0" x2="1"><stop offset="0" stop-color="#f29a1f" stop-opacity=".26"/><stop offset="1" stop-color="#d07a10" stop-opacity=".10"/></linearGradient>
-          <linearGradient id="gDev" x1="0" x2="1"><stop offset="0" stop-color="#5b6f93" stop-opacity=".30"/><stop offset="1" stop-color="#3f5070" stop-opacity=".12"/></linearGradient>
-          <filter id="glow" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="4" result="b"/><feFlood flood-color="#7fd3ff" flood-opacity=".55"/><feComposite in2="b" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-          <filter id="glowRed" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="5" result="b"/><feFlood flood-color="#ff4f6d" flood-opacity=".7"/><feComposite in2="b" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-          <filter id="glowGreen" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="4" result="b"/><feFlood flood-color="#27b06a" flood-opacity=".7"/><feComposite in2="b" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-          <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7fd3ff"/></marker>
-        </defs>
-
-        <!-- Bands -->
-        <g id="bands">
-          <rect x="30" y="40" width="830" height="120" rx="18" fill="url(#gApp)" stroke="#5a46c9" stroke-opacity=".6"/>
-          <rect x="48" y="56" width="196" height="30" rx="10" fill="var(--app)"/>
-          <text class="band-label" x="62" y="76">Application</text>
-          <text class="band-sub" x="50" y="106">user space process</text>
-          <text class="band-sub" x="50" y="124">MAP_SHARED file</text>
-
-          <rect x="30" y="174" width="830" height="96" rx="18" fill="url(#gMmu)" stroke="#1f8a54" stroke-opacity=".6"/>
-          <rect x="48" y="190" width="196" height="30" rx="10" fill="var(--mmu)"/>
-          <text class="band-label" x="62" y="210">Page tables (MMU)</text>
-          <text class="band-sub" x="50" y="240">maps file memory</text>
-          <text class="band-sub" x="50" y="257">into the process</text>
-
-          <rect x="30" y="284" width="830" height="196" rx="18" fill="url(#gCache)" stroke="#2a6fc4" stroke-opacity=".6"/>
-          <rect x="48" y="300" width="196" height="30" rx="10" fill="var(--cache)"/>
-          <text class="band-label" x="62" y="320">Page cache</text>
-          <text class="band-sub" x="50" y="350">file data in RAM,</text>
-          <text class="band-sub" x="50" y="367">managed as folios</text>
-          <text class="band-sub" x="50" y="384">(1 folio = 2^order</text>
-          <text class="band-sub" x="50" y="401">× 4 KiB pages)</text>
-
-          <rect x="30" y="494" width="830" height="104" rx="18" fill="url(#gFs)" stroke="#c77a12" stroke-opacity=".6"/>
-          <rect x="48" y="510" width="196" height="30" rx="10" fill="var(--fs)"/>
-          <text class="band-label" x="62" y="530">Filesystem · writeback</text>
-          <text class="band-sub" x="50" y="560">XFS / iomap,</text>
-          <text class="band-sub" x="50" y="577">flusher threads</text>
-
-          <rect x="30" y="612" width="830" height="160" rx="18" fill="url(#gDev)" stroke="#4a5d82" stroke-opacity=".7"/>
-          <rect x="48" y="628" width="196" height="30" rx="10" fill="var(--dev)"/>
-          <text class="band-label" x="62" y="648">Block layer · device</text>
-          <text class="band-sub" x="50" y="678">readahead, I/O</text>
-          <text class="band-sub" x="50" y="695">requests, disk</text>
-        </g>
-
-        <!-- Application ops -->
-        <g id="op-scan" class="chip"><rect x="280" y="76" width="170" height="44" rx="12"/><text x="365" y="96" text-anchor="middle">sequential read</text><text class="m" x="365" y="112" text-anchor="middle">read() · scan · recovery</text></g>
-        <g id="op-store" class="chip"><rect x="476" y="76" width="170" height="44" rx="12"/><text x="561" y="96" text-anchor="middle">small stores</text><text class="m" x="561" y="112" text-anchor="middle">records ~700 B each</text></g>
-        <g id="op-release" class="chip"><rect x="672" y="76" width="170" height="44" rx="12"/><text x="757" y="96" text-anchor="middle">scattered updates</text><text class="m" x="757" y="112" text-anchor="middle">flag flips, 24 B each</text></g>
-
-        <!-- MMU -->
-        <g id="ptes" class="ptes"></g>
-        <text class="band-sub" x="280" y="258">512 × PTE, one per 4 KiB page</text>
-        <g id="pmd" class="pmd"><rect x="600" y="196" width="242" height="40" rx="10"/><text x="721" y="221" text-anchor="middle">1 × PMD → whole 2 MiB folio</text></g>
-        <text class="band-sub" x="600" y="258">one entry, one dirty bit</text>
-
-        <!-- Page cache strip -->
-        <g id="strip"></g>
-        <text id="order" class="order" x="270" y="318"></text>
-        <path id="link" class="link" d="M 721 236 C 721 290, 450 300, 450 352"/>
-
-        <!-- FS chips -->
-        <g id="fs-mkwrite" class="chip"><rect x="270" y="528" width="230" height="46" rx="12"/><text x="385" y="548" text-anchor="middle">write fault</text><text class="m" x="385" y="564" text-anchor="middle">page_mkwrite → folio_mark_dirty</text></g>
-        <g id="fs-flusher" class="chip"><rect x="514" y="528" width="160" height="46" rx="12"/><text x="594" y="548" text-anchor="middle">flusher thread</text><text class="m" x="594" y="564" text-anchor="middle">dirty_expire 30 s</text></g>
-        <g id="fs-iomap" class="chip"><rect x="688" y="528" width="156" height="46" rx="12"/><text x="766" y="548" text-anchor="middle">iomap writeback</text><text class="m" x="766" y="564" text-anchor="middle">whole folio → bio</text></g>
-
-        <!-- Device -->
-        <g id="ra" class="ra">
-          <text x="270" y="650">readahead window (read_ahead_kb)</text>
-          <rect class="track" x="270" y="662" width="320" height="22" rx="6"/>
-          <rect id="ra-win" class="win" x="270" y="662" width="10" height="22" rx="6"/>
-          <text id="ra-txt" x="270" y="704">128 KiB</text>
-          <text x="270" y="740">max folio from readahead ≈ window size (≤ 2 MiB)</text>
-        </g>
-        <g id="disk" class="disk">
-          <rect x="640" y="636" width="200" height="34" rx="9"/><circle class="led" cx="820" cy="653" r="4"/>
-          <rect x="640" y="676" width="200" height="34" rx="9"/><circle class="led" cx="820" cy="693" r="4"/>
-          <text x="656" y="658" font-size="12.5" fill="#dfe7f7">disk / volume</text>
-          <rect x="640" y="720" width="200" height="12" rx="6" fill="#0f1b31" stroke="#3a4f77"/>
-          <rect id="meter" class="meter" x="640" y="720" width="0" height="12" rx="6"/>
-          <text id="meter-txt" x="740" y="754" text-anchor="middle" font-size="12" fill="#c9d6ee" style="font-family: var(--mono)">written: 0 B</text>
-        </g>
-
-        <!-- Counters -->
-        <g id="counters">
-          <rect x="882" y="40" width="288" height="732" rx="18" fill="#0f1a30" stroke="#2a3b5c"/>
-          <text x="904" y="74" font-size="15" font-weight="700" fill="#fff">What the kernel sees</text>
-          <text class="cnt-k" x="904" y="112">Bytes the app changed</text><text id="c-app" class="cnt-v" x="904" y="140">–</text>
-          <text class="cnt-k" x="904" y="182">Bytes written to disk</text><text id="c-disk" class="cnt-v" x="904" y="210">–</text>
-          <text class="cnt-k" x="904" y="252">Write amplification</text><text id="c-ratio" class="cnt-v" x="904" y="280">–</text>
-          <line x1="904" x2="1148" y1="306" y2="306" stroke="#2a3b5c"/>
-          <text class="cnt-k" x="904" y="338">Folio size in this file</text><text id="c-folio" class="cnt-v" x="904" y="366">–</text>
-          <text class="cnt-k" x="904" y="408">read_ahead_kb</text><text id="c-ra" class="cnt-v" x="904" y="436">128</text>
-          <text class="cnt-k" x="904" y="478">FilePmdMapped (meminfo)</text><text id="c-pmd" class="cnt-v" x="904" y="506">0 kB</text>
-          <text class="cnt-k" x="904" y="548">Dirty (meminfo)</text><text id="c-dirty" class="cnt-v" x="904" y="576">0 kB</text>
-          <line x1="904" x2="1148" y1="602" y2="602" stroke="#2a3b5c"/>
-          <text class="cnt-k" x="904" y="632">Legend</text>
-          <rect x="904" y="646" width="14" height="14" rx="3" fill="#1d3d6e"/><text class="cnt-k" x="926" y="658">clean 4 KiB page</text>
-          <rect x="904" y="670" width="14" height="14" rx="3" fill="#ffd166"/><text class="cnt-k" x="926" y="682">bytes actually stored</text>
-          <rect x="904" y="694" width="14" height="14" rx="3" fill="#ff4f6d"/><text class="cnt-k" x="926" y="706">dirty, will be written</text>
-          <rect x="904" y="718" width="14" height="14" rx="3" fill="none" stroke="#3aa0ff" stroke-width="2"/><text class="cnt-k" x="926" y="730">folio boundary</text>
-        </g>
-
-        <g id="packets"></g>
-      </svg>
+<section id="walkthrough" class="section" aria-labelledby="walk-title">
+  <div class="section-head"><div><div class="section-no">01 / FOLLOW ONE UPDATE</div><h2 id="walk-title">Same file. Same bytes.<br>Two paths to disk.</h2></div><p>A 64-byte overwrite at <strong>400 MiB + 128 bytes</strong> in a 1 GiB file. It falls inside one 4 KiB block of a <strong id="walk-folio-intro">2 MiB</strong> folio, after earlier reads populated the cache. Compare separate runs from the same clean cache state.</p></div>
+  <div class="walk-layout">
+    <aside class="story" aria-label="Walkthrough controls">
+      <div class="story-top"><div class="step-kicker" id="step-kicker">STEP 01 OF 06</div><h3 id="step-title">The app changes 64 bytes</h3><p class="story-copy" id="step-copy">With pwrite(), the kernel receives an offset and length, then copies 64 bytes into the page cache. With a shared mmap, the CPU stores directly into the mapped cache memory. An initial write fault lets the filesystem prepare the mapping for writes.</p><p class="story-takeaway" id="step-takeaway">Both update cached file data in RAM. Neither ordinary operation promises that the data is already durable on disk.</p>
+      <div class="play-controls"><button class="button quiet" id="prev" aria-label="Previous step" disabled="">← Prev</button><button class="button primary" id="play" aria-label="Play walkthrough" aria-pressed="false">Play ▶</button><button class="button quiet" id="next" aria-label="Next step">Next →</button></div></div>
+      <ol class="steps" aria-label="Walkthrough steps">
+        <li><button data-step="0" aria-current="step"><span class="num">01</span>App updates bytes</button></li>
+        <li><button data-step="1"><span class="num">02</span>Dirty state diverges</button></li>
+        <li><button data-step="2"><span class="num">03</span>File joins dirty queue</button></li>
+        <li><button data-step="3"><span class="num">04</span>Worker checks age</button></li>
+        <li><button data-step="4"><span class="num">05</span>Find dirty folios</button></li>
+        <li><button data-step="5"><span class="num">06</span>Submit dirty blocks</button></li>
+      </ol>
+    </aside>
+    <div class="stack" aria-label="Write and mmap paths through the kernel">
+      <div class="stack-header"><p class="small"><strong>One update through the stack</strong><br>Existing, clean, cached file · no concurrent writes</p><span class="badge" id="walk-folio-badge">2 MiB folios</span></div>
+      <div class="compare-heading"><div><div class="path-name blue">write() / pwrite()</div><div class="path-sub">Buffered file I/O</div></div><div><div class="path-name amber">mmap(MAP_SHARED)</div><div class="path-sub">CPU stores through a file mapping</div></div></div>
+      <div class="stack-stage active" data-stage="0"><div class="stage-label"><b>1</b> Application → cache memory</div><div class="columns"><div class="column"><code class="code-line">pwrite(fd, data, 64, offset)</code><p>Known range: <strong>offset + 64 bytes</strong></p></div><div class="column"><code class="code-line">memcpy(map + offset, data, 64)</code><p>Fault if write-protected; then CPU stores.</p></div></div></div>
+      <div class="stack-stage future" data-stage="1"><div class="stage-label"><b>2</b> <span id="walk-cache-label">Page cache · 400–402 MiB region</span></div><div class="columns"><div class="column"><div class="mini-number blue" id="walk-write-blocks">0 <small>dirty blocks</small></div><svg id="walk-write-map" class="cell-map" viewBox="0 0 319 159" role="img" aria-label="Buffered write dirty block map"></svg><p id="walk-write-caption">The cache starts clean.</p></div><div class="column"><div class="mini-number amber" id="walk-mmap-blocks">0 <small>dirty blocks</small></div><svg id="walk-mmap-map" class="cell-map" viewBox="0 0 319 159" role="img" aria-label="Shared mmap dirty block map"></svg><p id="walk-mmap-caption">The cache starts clean.</p></div></div><div class="legend"><span class="legend-item"><i class="swatch blue-bg"></i>Block containing the edit</span><span class="legend-item"><i class="swatch amber-bg"></i>Extra blocks marked dirty</span><span class="legend-item"><i class="swatch clean-bg"></i>Clean</span></div><p class="small" style="margin-top:8px"><span id="walk-map-unit">Each square = 4 KiB. This 2 MiB region contains one 512-block folio.</span></p></div>
+      <div class="stack-stage future" data-stage="2"><div class="stage-label"><b>3</b> Shared bookkeeping · dirty file</div><div class="chain"><code>dirty folio + cache tag</code><span>→</span><code>inode: I_DIRTY_PAGES</code><span>→</span><code>wb-&gt;b_dirty</code></div><p>Both paths have <strong>one dirty folio</strong>. The inode is the kernel’s record for this file.</p></div>
+      <div class="stack-stage future" data-stage="3"><div class="stage-label"><b>4</b> Writeback worker · periodic path</div><div class="chain"><code>wb_workfn()</code><span>→</span><code>wb_do_writeback()</code><span>→</span><code>wb_check_old_data_flush()</code></div><p>The worker wakes and calls the checker. If a periodic pass is due, <code>wb_writeback()</code> selects eligible dirty inodes.</p><div class="age-gate"><span>Inode old enough?</span><span>No → keep queued</span><span class="yes">Yes → wb-&gt;b_io</span></div></div>
+      <div class="stack-stage future" data-stage="4"><div class="stage-label"><b>5</b> File’s cache · dirty-tag lookup</div><div class="chain"><code>do_writepages()</code><span>→</span><code>iomap_writepages()</code><span>→</span><code>writeback_iter()</code></div><svg id="walk-file-map" class="cell-map" viewBox="0 0 639 79" role="img" aria-label="512 folios in the file; only folio 200 is dirty"></svg><p><strong id="walk-selected-count">1 of 512 folios selected.</strong> Clean folios are skipped. Each square above is a 2 MiB region of the file; the pass is limited by its range and budget.</p></div>
+      <div class="stack-stage future" data-stage="5"><div class="stage-label"><b>6</b> Filesystem → block I/O → storage</div><div class="columns"><div class="column"><div class="disk-number blue" id="walk-write-disk">0 B</div><div class="disk-label" id="walk-write-disk-note">Data submitted so far</div><div class="bar-track"><div class="bar" id="walk-write-bar"></div></div></div><div class="column"><div class="disk-number amber" id="walk-mmap-disk">0 B</div><div class="disk-label" id="walk-mmap-disk-note">Data submitted so far</div><div class="bar-track"><div class="bar amber-fill" id="walk-mmap-bar"></div></div></div></div><div class="result-callout"><span id="walk-result-note">Same 64-byte application update.<br>Step forward to submit writeback.</span><strong id="walk-ratio">—</strong></div></div>
+      <p class="small muted">The diagram retains the dirty footprint after submission for comparison. Successful completion ends writeback; it does not by itself promise power-loss durability.</p>
     </div>
-    <figcaption>Not to scale: each folio is drawn as 16 cells standing for its 512 pages. The four folios are an 8 MiB stretch of one file at offset 64 MiB, past the readahead ramp at the start of the file.</figcaption>
-  </figure>
+  </div>
+  <details class="scope"><summary>Timing, dirty state, and what this example leaves out</summary><p><code>dirty_writeback_centisecs</code> controls periodic wake frequency; <code>dirty_expire_centisecs</code> supplies the age cutoff for old-data selection. The first dirty inode may schedule delayed work via <code>wb_wakeup_delayed()</code>. Age is an inode scheduling heuristic, not a timer attached to each modified byte. Dirty-pressure writeback, reclaim-related work, and explicit sync requests may cause I/O sooner.</p><p>A folio dirty flag and iomap’s per-block dirty bitmap are different things. Both paths mark the folio dirty; their block maps differ. Buffered writes track the range copied, not a comparison of old and new byte values. Counts here are file-data writeback bytes, excluding filesystem metadata and journal traffic, and SSD-internal writes. This model uses ordinary buffered I/O and shared mappings, not DAX, direct I/O, or MAP_PRIVATE.</p></details>
+</section>
 
-</div>
+<section id="explorer" class="section" aria-labelledby="explorer-title">
+  <div class="section-head"><div><div class="section-no">02 / SCALE UP TO A FILE</div><h2 id="explorer-title">A little here.<br>A little everywhere.</h2></div><p>Scatter identical updates across a <strong>1 GiB file</strong>. Both APIs receive the same offsets and payloads. Change the pattern to see how many cache folios become involved.</p></div>
+  <p class="ra-explorer-note" id="ra-explorer-note">Readahead preset: 2304 KiB. Model uses 2 MiB folios; actual allocations can be mixed.</p>
+  <div class="explorer">
+    <div class="controls">
+      <div class="control"><label for="pattern">Where are the updates?</label><select id="pattern"><option value="random">Random across 1 GiB</option><option value="cluster">Random within 16 MiB</option><option value="spread">One in every 2 MiB region</option></select></div>
+      <div class="control"><label for="folio-size">Assumed cache folio size</label><select id="folio-size"><option value="2097152">2 MiB · 512 blocks</option><option value="131072">128 KiB · 32 blocks</option><option value="65536">64 KiB · 16 blocks</option><option value="4096">4 KiB · 1 block</option></select></div>
+      <div class="control"><label for="update-size">Bytes per update</label><select id="update-size"><option value="4096">4 KiB · one full block</option><option value="64">64 bytes · within a block</option></select></div>
+      <div class="control"><label for="update-count">Distinct blocks updated <output id="count-output" for="update-count">512</output></label><input id="update-count" type="range" min="1" max="512" value="512" step="1"><div class="range-labels"><span>1</span><span>512</span></div></div>
+    </div>
+    <div class="stats" aria-live="polite" aria-atomic="true"><div class="stat"><div class="stat-label">Application updates</div><div class="stat-value" id="app-bytes">2 MiB</div><div class="stat-sub" id="app-sub">512 × 4 KiB</div></div><div class="stat"><div class="stat-label">write() data writeback</div><div class="stat-value blue" id="write-bytes">2 MiB</div><div class="stat-sub" id="write-sub">512 dirty blocks</div></div><div class="stat"><div class="stat-label">mmap data writeback</div><div class="stat-value amber" id="mmap-bytes">634 MiB</div><div class="stat-sub" id="mmap-sub">317 dirty folios</div></div><div class="stat"><div class="stat-label">mmap ÷ write() data I/O</div><div class="stat-value amber" id="io-ratio">317×</div><div class="stat-sub">For the same application updates</div></div></div>
+    <div class="explorer-body">
+      <div><div class="map-title"><div><h3>The whole file</h3><p class="small">Each tile is a 2 MiB region. Select one to inspect.</p></div><button class="button quiet" id="resample">New sample ↻</button></div><div id="file-grid" class="file-grid" role="group" aria-label="File regions. Use arrow keys to choose a region."></div><div class="map-axis"><span>0 · file start</span><span>1 GiB · file end</span></div><div class="legend"><span class="legend-item"><i class="swatch violet-bg"></i>Contains an update</span><span class="legend-item"><i class="swatch clean-bg"></i>No update</span><span class="legend-item">Outline = selected</span></div><p class="map-meta" id="map-meta">317 of 512 regions touched.</p><p class="small" id="pattern-note" style="margin-top:7px">Uniform sample of distinct blocks across the whole file.</p></div>
+      <div class="zoom"><div class="zoom-heading"><h3>Inside one region</h3><label for="region">Region <input type="number" id="region" min="0" max="511" value="0" step="1"></label></div><p class="small" id="region-description">0–2 MiB · one update</p><div class="zoom-columns"><div><div class="zoom-caption blue">write() footprint</div><div class="zoom-bytes blue" id="zoom-write-bytes">4 KiB</div><svg class="cell-map" id="zoom-write" viewBox="0 0 319 159" role="img" aria-label="Blocks written in this region by write"></svg></div><div><div class="zoom-caption amber">mmap footprint</div><div class="zoom-bytes amber" id="zoom-mmap-bytes">2 MiB</div><svg class="cell-map" id="zoom-mmap" viewBox="0 0 319 159" role="img" aria-label="Blocks written in this region by mmap"></svg></div></div><div class="legend"><span class="legend-item"><i class="swatch blue-bg"></i>Updated block</span><span class="legend-item"><i class="swatch amber-bg"></i>Extra writeback</span></div><p class="small" style="margin-top:12px">Each square is a 4 KiB block. The highlighted blocks form the writeback footprint after all selected updates.</p></div>
+    </div>
+    <div class="formula"><div><span class="blue">write(): </span><code id="write-formula">512 blocks × 4 KiB = 2 MiB</code></div><div><span class="amber">mmap: </span><code id="mmap-formula">317 folios × 2 MiB = 634 MiB</code></div></div>
+  </div>
+  <div class="explorer-bottom"><p>Model: initially clean cache, fixed-size folios, 4 KiB blocks, unique block locations, and one final writeback after updates coalesce. A 64-byte edit stays within its block. Ratios compare file-data bytes; they are not latency or device-wear predictions.</p><span class="badge" id="sample-label">Fixed sample · 20261009</span></div>
+  <details class="scope"><summary>Why random and maximally scattered are different</summary><p>With 512 full-block updates, the app changes only 2 MiB. The initial random sample touches 317 large folios: 634 MiB of mmap writeback versus 2 MiB with write(). Confining the same amount of work to 16 MiB touches eight 2 MiB folios. Placing one update in every 2 MiB region touches all 512: 1 GiB versus 2 MiB. That last pattern is a deliberately spread example, not the expected outcome of every random workload.</p><p>These counters are computed from the selected offsets. Repeated modifications before a flush can coalesce. A later modification after a completed flush can cause the same folio to be written again.</p></details>
+</section>
 
+<section id="mapping" class="section" aria-labelledby="mapping-title">
+  <div class="section-head"><div><div class="section-no">03 / TWO DIFFERENT GRANULARITIES</div><h2 id="mapping-title">A folio is not<br>a page-table entry.</h2></div><p>The page cache groups file data into <strong>folios</strong>. Page tables map virtual addresses to that memory. A large cache folio can be reached through either small or huge mappings.</p></div>
+  <div class="mapping-layout"><div class="mapping-card"><div class="segmented" role="group" aria-label="Page-table mapping"><button id="mapping-pmd" aria-pressed="true">PMD mapping · 2 MiB</button><button id="mapping-pte" aria-pressed="false">PTE mappings · 4 KiB</button></div><div class="mapping-label">CPU PAGE TABLES · TYPICAL x86-64 SIZES</div><div id="pmd-entry" class="pmd-entry"><strong>1 PMD entry</strong><span>One dirty bit covers 2 MiB</span></div><div id="pte-entries" class="pte-entries" hidden="" aria-label="512 PTEs, with one dirty entry"></div><div class="mapping-arrow" aria-hidden="true">↓</div><div class="mapping-label">PAGE CACHE · SAME MEMORY IN BOTH CASES</div><div class="mapping-folio">One 2 MiB folio<span class="small">512 filesystem blocks · modeled mmap writeback: 2 MiB</span></div><p id="mapping-explanation" class="mapping-explanation">A PMD dirty bit says that something in its 2 MiB mapping was written. It does not identify the modified 4 KiB block.</p></div>
+  <div class="mapping-copy"><h3>Mapping size changes what the CPU can report.</h3><p>A 2 MiB folio does not guarantee a PMD mapping. The fault path checks size, alignment, page-table state, and mapping policy. Smaller PTE mappings are used when a huge mapping cannot be installed.</p><p class="callout">In the whole-folio dirtying behavior modeled here, PTE-mapped large folios can also suffer the amplification. Selecting PTEs alone does not fix the filesystem’s dirty tracking. Buffered <code>write()</code> gets its precision from the supplied offset and copied length, recorded in iomap’s dirty-block bitmap. It does not depend on PTE dirty bits.</p><details><summary>Where finer tracking could help</summary><p>PTE dirty bits provide 4 KiB information in this example. A September 2026 RFC proposed harvesting them for sub-folio dirty tracking. PMD mappings still expose only a coarse dirty bit. This page illustrates the behavior motivating that work; it does not claim the RFC is merged or enabled on your kernel.</p></details><details><summary>Where the large folio came from</summary><p>The readahead profiles above show the setup stage. A wider window can accommodate larger folios before the writes begin. This mapping diagram specifically shows a 2 MiB folio; the 128 KiB profile uses smaller cache folios, which are PTE-mapped in this x86-64 example. Real files can contain mixed sizes.</p></details></div></div>
+  <div class="tracking-comparison">
+    <h3>What tells writeback which blocks to send?</h3>
+    <p class="small">Same 2 MiB cache folio, same 64-byte edit within one 4 KiB block. Whole-folio mmap dirtying is the behavior modeled here.</p>
+    <div class="table-scroll"><table><thead><tr><th>Update path</th><th>Information available</th><th>Modeled file-data writeback</th></tr></thead><tbody>
+      <tr><td>mmap · PMD mapping</td><td>One hardware dirty bit covers the entire 2 MiB mapping.</td><td><strong class="amber">2 MiB</strong> · whole folio</td></tr>
+      <tr><td>mmap · PTE mappings</td><td>Hardware bits identify 4 KiB pages, but the modeled filesystem dirtying path still marks the whole folio.</td><td><strong class="amber">2 MiB</strong> · whole folio</td></tr>
+      <tr><td>Buffered write() / pwrite()</td><td>The kernel knows the offset and copied length. iomap records the overlapping filesystem blocks.</td><td><strong class="blue">4 KiB</strong> · one dirty block</td></tr>
+    </tbody></table></div><p class="small" style="margin-top:13px">CPU page tables still translate memory addresses during write(), but those mappings are not the mechanism used to track the file’s dirty ranges. “Precise” here means filesystem-block granularity, not byte-sized disk writes.</p>
+  </div>
+</section>
+
+<section id="sources" class="section" aria-labelledby="sources-title">
+  <div class="section-head"><div><div class="section-no">04 / FOLLOW THE SOURCE</div><h2 id="sources-title">From the picture<br>to the kernel.</h2></div><p>Documentation for the mechanisms, source for the call path, and the discussions connecting them to sparse journal-file updates.</p></div>
+  <p class="sources-intro">The distinction matters for workloads such as systemd-journald: small, scattered file updates can dirty much larger cache units. This is a conditional explanation of that mechanism, not a claim about every journal installation.</p>
+  <div class="sources-grid">
+    <article class="source"><span class="source-number">01</span><div><a href="https://docs.kernel.org/filesystems/iomap/operations.html#internal-per-folio-state" target="_blank" rel="noopener noreferrer">iomap: per-folio state and buffered I/O ↗</a><p>Per-filesystem-block dirty bits inside larger folios, mmap write faults, and page-cache writeback.</p><small>docs.kernel.org · filesystem documentation</small></div></article>
+    <article class="source"><span class="source-number">02</span><div><a href="https://lists.openwall.net/linux-kernel/2026/08/20/1169" target="_blank" rel="noopener noreferrer">The systemd-journald connection ↗</a><p>Kernel discussion of small mmap writes, whole-folio writeback, and the contrast with range-aware buffered writes.</p><small>LKML · Pedro Falcato · 20 Aug 2026</small></div></article>
+    <article class="source"><span class="source-number">03</span><div><a href="https://lists.openwall.net/linux-kernel/2026/09/03/2455" target="_blank" rel="noopener noreferrer">RFC: sub-folio dirty tracking for mmap ↗</a><p>Explains the PTE/PMD distinction and proposes finer tracking for PTE-mapped file writes.</p><small>LKML · Kiryl Shutsemau · 3 Sep 2026 · proposal</small></div></article>
+    <article class="source"><span class="source-number">04</span><div><a href="https://docs.kernel.org/admin-guide/sysctl/vm.html#dirty-writeback-centisecs" target="_blank" rel="noopener noreferrer">Writeback interval and dirty age ↗</a><p>Definitions of dirty_writeback_centisecs and dirty_expire_centisecs, plus background dirty thresholds.</p><small>docs.kernel.org · VM sysctl documentation</small></div></article>
+    <article class="source"><span class="source-number">05</span><div><a href="https://codebrowser.dev/linux/linux/fs/iomap/buffered-io.c.html" target="_blank" rel="noopener noreferrer">iomap buffered-io.c ↗</a><p>Range dirtying in buffered writes, whole-folio dirtying, and extraction of dirty ranges during writeback.</p><small>Linux source · fs/iomap/buffered-io.c</small></div></article>
+    <article class="source"><span class="source-number">06</span><div><a href="https://codebrowser.dev/linux/linux/fs/fs-writeback.c.html#2294" target="_blank" rel="noopener noreferrer">The writeback worker and inode queues ↗</a><p>Periodic checks, old-inode selection, and dispatch into filesystem writeback.</p><small>Linux source · fs/fs-writeback.c</small></div></article>
+    <article class="source"><span class="source-number">07</span><div><a href="https://codebrowser.dev/linux/linux/mm/page-writeback.c.html#2455" target="_blank" rel="noopener noreferrer">Finding dirty-tagged folios ↗</a><p>Tagged cache lookup, writeback iteration, and dirty-state preparation with folio_mkclean().</p><small>Linux source · mm/page-writeback.c</small></div></article>
+    <article class="source"><span class="source-number">08</span><div><a href="https://codebrowser.dev/linux/linux/mm/memory.c.html#5366" target="_blank" rel="noopener noreferrer">Installing a PMD mapping ↗</a><p>The fault path and the conditions used when attempting a huge page-table mapping.</p><small>Linux source · mm/memory.c</small></div></article>
+    <article class="source"><span class="source-number">09</span><div><a href="https://codebrowser.dev/linux/linux/mm/readahead.c.html#464" target="_blank" rel="noopener noreferrer">Readahead window → allocation order ↗</a><p>page_cache_ra_order() constrains order by window size. ractl_max_pages() shows the large-request exception.</p><small>Linux source · mm/readahead.c</small></div></article>
+    <article class="source"><span class="source-number">10</span><div><a href="https://codebrowser.dev/linux/linux/block/blk-settings.c.html#63" target="_blank" rel="noopener noreferrer">Optimal I/O size → readahead ↗</a><p>blk_apply_bdi_limits() uses the maximum of the existing setting, twice optimal I/O size, and the baseline.</p><small>Linux source · block/blk-settings.c</small></div></article>
+    <article class="source"><span class="source-number">11</span><div><a href="https://codebrowser.dev/linux/linux/drivers/md/raid0.c.html#381" target="_blank" rel="noopener noreferrer">Example: RAID0 geometry ↗</a><p>RAID0 computes optimal I/O size from chunk size and disk count. This illustrates array-driven scaling, not the unknown layout of the reported test.</p><small>Linux source · drivers/md/raid0.c</small></div></article>
+    <article class="source"><span class="source-number">12</span><div><a href="https://codebrowser.dev/linux/linux/include/linux/pagemap.h.html#1379" target="_blank" rel="noopener noreferrer">The 128 KiB baseline ↗</a><p>VM_READAHEAD_PAGES defines the baseline. It does not imply every device retains this setting.</p><small>Linux source · include/linux/pagemap.h</small></div></article>
+    <article class="source"><span class="source-number">13</span><div><a href="https://codebrowser.dev/linux/linux/block/blk-sysfs.c.html#130" target="_blank" rel="noopener noreferrer">Reading read_ahead_kb in sysfs ↗</a><p>The exported value converts the backing-device page count to units of 1024 bytes.</p><small>Linux source · block/blk-sysfs.c</small></div></article>
+    <article class="source"><span class="source-number">14</span><div><a href="https://codebrowser.dev/linux/linux/mm/fadvise.c.html#90" target="_blank" rel="noopener noreferrer">Sequential advice changes file readahead ↗</a><p>POSIX_FADV_SEQUENTIAL doubles the per-file readahead limit relative to the backing-device setting.</p><small>Linux source · mm/fadvise.c</small></div></article>
+  </div>
+  <details class="source-detail"><summary>Function-by-function route through the walkthrough</summary><div class="table-scroll"><table><thead><tr><th>Step</th><th>Source entry points</th><th>What to look for</th></tr></thead><tbody>
+    <tr><td>Earlier cache population</td><td><a href="https://codebrowser.dev/linux/linux/mm/readahead.c.html#464">page_cache_ra_order()</a></td><td>Allocation order is shaped by the current readahead window and filesystem support.</td></tr>
+    <tr><td>Range-aware buffered write</td><td><a href="https://codebrowser.dev/linux/linux/fs/iomap/buffered-io.c.html#994">__iomap_write_end()</a></td><td>Dirty state for the range actually copied, rounded to blocks.</td></tr>
+    <tr><td>Shared mmap write</td><td><a href="https://codebrowser.dev/linux/linux/fs/iomap/buffered-io.c.html#1675">iomap_page_mkwrite()</a><br><a href="https://codebrowser.dev/linux/linux/fs/iomap/buffered-io.c.html#732">iomap_dirty_folio()</a></td><td>Write-fault preparation and the full-folio dirtying hook.</td></tr>
+    <tr><td>Queue dirty inode</td><td><a href="https://codebrowser.dev/linux/linux/mm/page-writeback.c.html#2737">filemap_dirty_folio()</a><br><a href="https://codebrowser.dev/linux/linux/fs/fs-writeback.c.html#2663">__mark_inode_dirty()</a></td><td>Cache tag, inode dirty flag, queue, and dirty timestamp.</td></tr>
+    <tr><td>Wake and check</td><td><a href="https://codebrowser.dev/linux/linux/fs/fs-writeback.c.html#2386">wb_workfn()</a><br><a href="https://codebrowser.dev/linux/linux/fs/fs-writeback.c.html#2294">wb_check_old_data_flush()</a></td><td>Worker calls the periodic checker via wb_do_writeback().</td></tr>
+    <tr><td>Choose eligible inodes</td><td><a href="https://codebrowser.dev/linux/linux/fs/fs-writeback.c.html#2159">wb_writeback()</a><br><a href="https://codebrowser.dev/linux/linux/fs/fs-writeback.c.html#1496">move_expired_inodes()</a></td><td>Age cutoff and movement from b_dirty to b_io via queue_io().</td></tr>
+    <tr><td>Find dirty folios</td><td><a href="https://codebrowser.dev/linux/linux/mm/page-writeback.c.html#2498">writeback_iter()</a><br><a href="https://codebrowser.dev/linux/linux/mm/page-writeback.c.html#2455">filemap_get_folios_tag()</a></td><td>Dirty-tagged folios within the requested range and budget.</td></tr>
+    <tr><td>Prepare mapped memory</td><td><a href="https://codebrowser.dev/linux/linux/mm/page-writeback.c.html#2895">folio_clear_dirty_for_io()</a></td><td>folio_mkclean() write-protects mappings and reconciles mapped dirty state.</td></tr>
+    <tr><td>Submit dirty blocks</td><td><a href="https://codebrowser.dev/linux/linux/fs/iomap/buffered-io.c.html#1822">iomap_writeback_folio()</a><br><a href="https://codebrowser.dev/linux/linux/fs/iomap/buffered-io.c.html#151">iomap_find_dirty_range()</a></td><td>The block bitmap determines the file-data ranges submitted for I/O.</td></tr>
+  </tbody></table></div><p class="small" style="margin-top:14px">Source walkthrough based on the Code Browser snapshot identified as v6.19-rc8-185-g2687c848e578. Online source pages and line numbers may change. The linked September 2026 RFC is evidence of a proposal, not of deployment status.</p></details>
+</section>
+<footer class="footer"><p>All calculations run locally in this page. No installation or external scripts required.</p><a href="index.html" download="folio-writeback.html">Download standalone HTML ↓</a></footer>
+</main>
+<script type="application/json" id="initial-samples">{"random":[104716,241799,72914,175278,43982,101055,241758,121119,49714,242076,135221,136643,179175,157761,203069,204654,247803,17451,244663,211847,105686,236280,225991,100080,142332,177825,242590,189465,179487,99258,255936,216051,47915,111882,250764,186106,226540,204088,49168,218077,63885,51514,214624,7701,204716,224700,104542,15519,180653,192713,43511,147858,91756,166947,9452,3034,197791,174635,53882,105235,155137,44741,62318,73476,208880,123719,194661,20219,39461,200525,158199,157199,122227,186772,107607,120776,166342,203950,117808,255354,212353,64701,70463,24138,188923,254829,91525,170124,32317,79707,79851,192165,232370,232770,98808,136234,63168,891,57641,158828,66638,126517,249868,200102,233452,255948,12817,208541,31239,241617,237993,123139,17602,54666,250936,253488,40654,229382,151481,101637,177830,88312,72667,119940,196907,239610,140458,178487,91482,46260,3510,67483,195951,191092,177236,206820,86690,17370,235652,74932,220110,207951,156019,136270,118272,14266,130858,1036,117803,2966,41117,235406,44211,130841,114355,60849,182923,81214,147278,240861,152943,203285,54928,177012,65018,100455,76303,109479,162232,215809,127595,67101,244433,55106,112294,119648,110615,49405,15058,68983,181576,147875,149522,245597,86537,241853,53879,254385,31642,211913,80527,182827,221155,158593,99135,66390,131221,241259,18090,254495,111536,5367,158216,5923,165307,177473,65798,22977,146952,258957,33896,127720,212295,174999,59118,161904,126323,13949,81008,66634,192964,134243,247649,136346,180630,3006,55668,206362,154657,2215,243910,191469,115569,74533,142634,239812,25095,228398,203750,211121,224367,179692,26768,68684,228920,114328,126118,150527,22427,58342,175537,174495,4626,2716,27839,33169,194106,186174,136592,148798,29043,177398,220249,56450,226086,258302,230978,223271,38151,116533,114254,224615,177573,24667,112090,9148,63333,21531,67748,131921,55300,195238,153881,120207,248050,93220,223605,232199,168405,185671,117968,183329,55719,103450,50009,204925,110098,18497,131576,83196,67247,33998,194505,34327,32856,141206,23874,66737,56065,214475,47681,76663,205923,259465,93999,38111,184361,20780,25489,190996,18552,49250,118187,63588,192537,191152,210973,228952,243930,55095,161559,103572,243796,216946,81063,101362,166796,47453,204445,91639,198619,131548,153514,163484,22957,120698,208494,220651,89803,192146,168624,158636,141104,101750,66911,247590,103408,187247,200864,60035,175043,113501,204016,250267,125939,95008,147266,112108,34934,259425,257014,108495,78324,184640,258695,158646,239767,221985,151199,11980,125207,228356,201155,96956,89933,201751,134213,74426,23497,175676,55186,207846,224104,122431,52770,156848,37179,198597,53643,60313,153598,215503,233246,256572,58339,166333,6199,64588,98917,80577,29428,26075,233487,34314,118373,82226,104965,139236,183862,227863,53129,18350,168509,143632,113155,68864,27718,76569,281,145516,165475,172657,32297,153801,184949,182637,16456,103986,57541,6423,40855,2304,76378,106047,162976,13584,88198,209499,217118,58790,205027,240843,143361,232287,233806,256363,160749,38132,195701,55853,86263,13730,211361,109796,142721,59320,191985,29099,61365,77354,52889,58382,218477,227889,16125,128112,42470,128662,36189,111377,39482,83960,26770,80110,54832,132784,66039,198542,14278,252246,69052,180186,179065,22818,53447,163914,170331,141891,249336,49171,110163,199174,69747,258207,130112,158249,235641,127329,751,18489,194887,83164],"cluster":[99940,101734,100193,98873,99673,98647,99093,101027,100961,100499,100192,101680,101840,101546,102155,99250,98692,100195,102113,101082,102284,101541,101035,99360,99371,99703,99536,102088,102287,100505,99890,99902,100239,102398,100932,101959,98440,101883,100469,100215,99959,99129,100149,100069,99085,100654,100457,101776,99415,101660,100987,101369,99693,101816,100583,100199,99784,99706,99079,100303,99991,101673,98678,101355,99178,101988,100263,100532,100695,101012,99757,100073,102290,100495,99898,100874,98688,101528,101634,100007,98803,98706,99980,100826,98364,99903,100059,100391,101064,100360,101803,101882,101647,99120,98425,102166,100415,102230,99715,100970,100509,100632,99809,98643,99459,101253,101098,101831,99020,99608,100523,101475,98377,98327,99849,101624,99668,100475,101083,98724,99126,101977,99516,102190,101428,100844,100440,98653,98790,100907,98878,102379,100669,99935,99270,102203,99824,98461,98612,101498,99870,102018,101300,99539,99532,99258,101877,99763,99144,99247,99603,99897,101046,100502,102345,99224,100298,99963,101167,98809,98854,98492,101308,99779,100657,100294,99019,102321,101824,101283,99633,101077,100385,101152,98556,98926,102178,102199,100956,101898,101724,100685,101510,98927,99805,100809,100119,100672,101613,102043,100122,99075,100376,100808,100458,99368,100447,98797,98310,101806,100403,100752,98754,101973,99544,101041,98824,101142,99292,100256,99867,100127,100814,102340,98404,99933,98548,101955,100191,101189,101330,100163,99266,102289,98441,98731,100264,101040,101592,101690,100284,102064,101940,100821,101479,100597,98621,100096,101789,100943,99487,99098,102347,102303,101709,100749,98993,101172,98871,99241,100599,99842,100424,100175,99401,101381,101953,99698,101063,100382,99018,100740,98665,98331,98831,99834,99796,100769,101529,100878,101112,100863,102217,99688,99919,98981,98439,101174,101675,100145,98889,101566,101309,100612,100397,102294,100023,100605,99928,99522,102204,99228,98415,99326,98312,102244,102286,101713,98625,100143,101074,100554,101801,98649,101686,101378,102106,101213,100877,101416,99197,98779,99733,98938,99454,100185,99498,101640,102245,99892,98733,99686,98811,100374,101696,99088,101617,100515,98900,99159,99571,100634,99990,99300,98828,101849,101277,100213,98734,100829,99181,99238,99168,100758,101418,98689,100395,98421,98842,99722,101108,102295,99472,100222,100569,98980,102397,100831,102280,100291,101361,98551,102359,98933,99732,100031,101915,101492,99543,99078,100704,101601,100621,98822,102308,99329,100188,98445,101534,100671,102011,101748,100292,102056,102198,101005,99175,100858,98345,99540,100793,98350,101457,99595,101928,100474,99690,100796,98818,101664,101362,98483,101494,101018,99452,100327,98568,99301,99962,101797,102362,100398,99671,98765,102232,101509,99568,99290,100427,98412,100835,98936,101904,102193,100895,99811,100701,99352,100238,101211,102307,99369,101391,100940,101689,102301,100868,102103,101705,100910,98738,100483,99916,99512,101513,101375,98321,100209,102004,99799,100715,100513,99206,98886,99418,100735,100177,102258,98500,100088,99895,100734,100723,100356,99953,101392,100056,99707,98513,100370,98840,100092,102089,101199,99289,101512,99479,101919,98479,100517,98759,99675,100433,99667,101056,98340,100565,98325,98521,101328,100451,100790,100512,98563,99820,101629,99758,102375,100670,101263,99466,102144,101817,98530,100928,99689,101615,102094,100620,100024,102000,98745],"spread":[64467,160951,92960,174467,237782,239478,130624,211912,18874,48906,169674,40166,60711,190453,170919,26803,100608,111774,114147,13147,54297,157805,16477,103947,137955,54259,139824,225292,246424,234297,39236,98149,178351,190675,128342,3820,132362,228158,206791,35719,230514,179529,241255,198801,19342,150625,171166,24928,82218,259893,147784,4193,253484,216099,204392,113016,241778,123318,250907,187125,184437,123956,160762,61787,239672,215655,233972,200299,243231,243133,51959,116627,1166,238358,77771,157314,79071,8738,107513,106028,184200,66566,96317,120788,119441,244306,91165,207349,107586,191128,254056,112258,59471,215485,16293,71314,187577,250755,151767,158626,166773,6964,8079,109683,178094,86332,149350,232216,259064,50998,201653,185173,60352,210077,222508,91782,224880,29801,212035,83051,196488,219648,108281,200023,246861,219285,23478,99969,201109,140817,90720,81183,14686,156718,226965,117038,255308,150218,44017,233416,47557,49275,138463,229785,74267,42543,143468,20393,161354,22031,245977,10446,257925,7564,261121,50288,213709,68469,197295,143105,140506,236200,260556,133978,82829,165094,11705,133176,27462,175935,95337,58858,55357,80542,141866,117252,99521,129033,168555,152100,183149,44876,209601,202343,218678,37102,247860,203058,51330,173746,72109,180499,39822,201967,106783,31865,164448,146868,19552,226308,121790,70177,181378,49665,139190,84094,66138,147397,225871,174848,144684,169275,255765,108958,196030,72598,89833,48070,59375,86949,38098,69801,15859,101411,79478,171717,63210,1878,38635,170460,257239,61126,88683,84676,134574,115205,141435,46967,254784,149612,244987,114442,57962,191848,87683,20604,23756,220995,11213,217821,249984,204917,162344,80229,120086,103733,122780,198406,186856,96240,64786,193492,214287,33175,193969,137290,220444,45119,57072,25464,188996,129541,252038,122253,163876,5898,245318,207473,12565,231894,5080,102617,29525,125663,31023,153731,105600,29058,252767,199213,56784,31319,28165,118645,198026,240247,238707,127019,135609,119009,235629,145130,247459,146102,67966,148710,67203,81878,53126,76880,172357,56279,210994,153250,36659,229036,984,65372,183562,158813,101335,213152,30413,173455,36148,99125,182473,162865,221759,223081,144253,41374,166264,242602,223776,204,130102,126757,15041,109397,88541,21092,251884,22927,249603,232901,162152,77910,155712,43376,172636,125375,2757,87289,142468,223588,231312,127601,260856,243962,159381,85717,75266,204163,68954,6493,73008,97181,32399,102922,196797,2133,83801,9693,176172,210489,148330,105306,34343,93476,62124,192821,228378,102385,14194,69523,110396,214887,45723,115820,126198,208396,145892,26400,17897,98735,94377,216905,155203,94175,179063,259326,85141,124550,48320,182243,230312,134766,256486,234570,40946,21923,34172,115040,253277,188634,237468,206244,221521,33521,152832,95192,78591,131451,136184,90328,17114,132898,120881,180934,163701,62605,75007,25684,180021,5384,167324,176875,42121,217368,53703,34893,11971,185565,155003,212711,195316,104770,37740,65714,165500,188191,256608,258184,227535,224459,46235,76006,154178,111131,168412,203336,24094,218246,63872,110838,128852,92514,76293,136643,139610,113414,18283,123742,118236,194343,97437,131947,44210,205611,192505,236570,151440,189946,175403,235390,208196,209022,55191,13785,73482,137140,71116,177559,8675,240791,57378,73959,248476,10141,167871,156435,248939,52712,186254,89307,27666,3544,41598,261668,160146,194583]}</script>
 <script>
 (() => {
-  const NS = "http://www.w3.org/2000/svg";
-  const $ = (id) => document.getElementById(id);
-  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+  'use strict';
+  const standaloneSource = '<!doctype html>\n' + document.documentElement.outerHTML;
+  const downloadURL = URL.createObjectURL(new Blob([standaloneSource], {type:'text/html;charset=utf-8'}));
+  document.querySelectorAll('a[download]').forEach(link => { link.href = downloadURL; });
+  const $ = id => document.getElementById(id);
+  function setTheme(theme){
+    const light=theme==='light';document.documentElement.dataset.theme=light?'light':'dark';
+    $('theme-toggle').textContent=light?'Dark mode':'Light mode';
+    $('theme-toggle').setAttribute('aria-label',light?'Use dark mode':'Use light mode');
+    $('theme-color').setAttribute('content',light?'#f4f7fc':'#0b1323');
+    try{localStorage.setItem('page-cache-theme',light?'light':'dark');}catch{}
+  }
+  $('theme-toggle').addEventListener('click',()=>setTheme(document.documentElement.dataset.theme==='light'?'dark':'light'));
+  setTheme(document.documentElement.dataset.theme);
 
-  // ---- build page cache strip: 4 folios x 16 cells
-  const strip = $("strip");
-  const X0 = 270, Y0 = 352, FW = 136, GAP = 10, CH = 46, NC = 16, CW = FW / NC;
-  const folios = [], cells = [];
-  for (let f = 0; f < 4; f++) {
-    const fx = X0 + f * (FW + GAP);
-    const g = mk("g", {}, strip);
-    const row = [];
-    for (let c = 0; c < NC; c++) row.push(mk("rect", { class: "cell", x: (fx + c * CW).toFixed(2), y: Y0, width: (CW - 0.6).toFixed(2), height: CH, rx: 2 }, g));
-    cells.push(row);
-    folios.push(mk("rect", { class: "folio", x: fx - 2, y: Y0 - 3, width: FW + 4, height: CH + 6, rx: 6 }, g));
-    const t = mk("text", { class: "flabel", x: fx + FW / 2, y: Y0 + CH + 22, "text-anchor": "middle" }, g);
-    t.textContent = ""; t.dataset.f = f;
+  const BLOCK = 4096, REGION = 2097152, FILE = 1073741824;
+  const initial = JSON.parse($('initial-samples').textContent);
+  const fmt = bytes => { const units = ['B','KiB','MiB','GiB']; let n=bytes, i=0; while(n>=1024&&i<3){n/=1024;i++;} return n.toLocaleString('en-US',{maximumFractionDigits:2})+' '+units[i]; };
+  const ratioFmt = n => n.toLocaleString('en-US',{maximumFractionDigits:1})+'×';
+  const palette = {clean:'var(--clean)',blue:'var(--blue)',amber:'var(--amber)',violet:'var(--violet)'};
+  function makeCells(svg, count=512, cols=32){
+    const ns='http://www.w3.org/2000/svg';
+    return Array.from({length:count},(_,i)=>{const cell=document.createElementNS(ns,'rect');cell.setAttribute('x',(i%cols)*10);cell.setAttribute('y',Math.floor(i/cols)*10);cell.setAttribute('width','8');cell.setAttribute('height','8');cell.setAttribute('rx','1');cell.setAttribute('fill',palette.clean);svg.appendChild(cell);return cell;});
   }
-  const flabels = [...strip.querySelectorAll(".flabel")];
-  const ticks = mk("g", {}, strip);
-  ["64 MiB", "66 MiB", "68 MiB", "70 MiB", "72 MiB"].forEach((s, i) => { const t = mk("text", { class: "band-sub", x: X0 + i * (FW + GAP) - (i ? GAP / 2 : 0), y: Y0 + CH + 44, "text-anchor": i ? "middle" : "start" }, ticks); t.textContent = s; });
-  const fileTag = mk("text", { class: "band-sub", x: 50, y: Y0 + CH + 44 }, ticks); fileTag.textContent = "file offset →";
-  const ramp = mk("rect", { x: X0 - 2, y: Y0 - 3, width: 0, height: CH + 6, rx: 6, fill: "none", stroke: "#ffd27a", "stroke-width": 2.4, opacity: 0 }, strip);
-
-  $("link").setAttribute("d", `M 721 236 C 721 300, ${X0 + FW + GAP + FW / 2} 300, ${X0 + FW + GAP + FW / 2} ${Y0 - 4}`);
-  // ---- PTE grid
-  const ptes = $("ptes");
-  for (let r = 0; r < 2; r++) for (let c = 0; c < 32; c++) mk("rect", { class: "pte", x: 280 + c * 9.6, y: 198 + r * 19, width: 8, height: 15, rx: 2 }, ptes);
-
-  // ---- helpers
-  const svg = $("stack"), pk = $("packets");
-  const timers = [];
-  const later = (ms, fn) => timers.push(setTimeout(fn, reduce ? 0 : ms));
-  const clearTimers = () => { while (timers.length) clearTimeout(timers.pop()); pk.replaceChildren(); };
-  function fly(x1, y1, x2, y2, { color = "#7fd3ff", r = 6, dur = 900, delay = 0, w = 0 } = {}) {
-    if (reduce) return;
-    const el = w ? mk("rect", { class: "packet", x: -w / 2, y: -9, width: w, height: 18, rx: 5, fill: color, opacity: .95 }, pk)
-                 : mk("circle", { class: "packet", r, fill: color }, pk);
-    el.style.filter = "drop-shadow(0 0 6px " + color + ")";
-    el.animate([{ transform: `translate(${x1}px,${y1}px)`, opacity: 0 }, { opacity: 1, offset: .15 }, { opacity: 1, offset: .85 }, { transform: `translate(${x2}px,${y2}px)`, opacity: 0 }],
-               { duration: dur, delay, easing: "cubic-bezier(.4,.1,.3,1)", fill: "both" });
-    setTimeout(() => el.remove(), dur + delay + 50);
-  }
-  const cellX = (f, c) => X0 + f * (FW + GAP) + c * CW + CW / 2;
-  const folioX = (f) => X0 + f * (FW + GAP) + FW / 2;
-  const on = (id, v) => $(id).classList.toggle("on", v);
-  const setC = (id, v, cls) => { const e = $(id); e.textContent = v; e.classList.remove("hot", "ok"); if (cls) e.classList.add(cls); };
-  function setRA(kb) {
-    const w = Math.max(10, Math.min(320, 320 * Math.log2(kb / 64) / Math.log2(4096 / 64)));
-    $("ra-win").setAttribute("width", w.toFixed(1));
-    $("ra-txt").textContent = kb >= 1024 ? (kb / 1024) + " MiB" : kb + " KiB";
-    setC("c-ra", String(kb));
-  }
-  function meter(bytes, label) {
-    const w = Math.min(200, bytes <= 0 ? 0 : 200 * Math.log2(1 + bytes / 4096) / Math.log2(1 + 16777216 / 4096));
-    $("meter").setAttribute("width", w.toFixed(1));
-    $("meter-txt").textContent = "written: " + label;
-  }
-  function leds(busy) { svg.querySelectorAll(".disk .led").forEach(l => l.classList.toggle("busy", busy)); }
-  function mode(m) { // 'empty' | 'large' | 'small'
-    svg.classList.remove("empty", "small", "large"); svg.classList.add(m);
-    flabels.forEach(t => t.textContent = m === "large" ? "2 MiB folio" : m === "small" ? "512 × 4 KiB folios" : "");
-  }
-  function resetCells() { cells.flat().forEach(c => c.classList.remove("dirty", "touch")); folios.forEach(f => f.classList.remove("dirty")); }
-  function dirtyFolio(f) { cells[f].forEach(c => c.classList.add("dirty")); folios[f].classList.add("dirty"); }
-  function base() {
-    clearTimers(); resetCells();
-    ["op-scan", "op-store", "op-release", "fs-mkwrite", "fs-flusher", "fs-iomap", "pmd"].forEach(i => on(i, false));
-    $("link").classList.remove("on"); $("ptes").classList.remove("dim");
-    ramp.setAttribute("opacity", 0); $("order").textContent = ""; leds(false);
-  }
-
-  // ---- steps
-  const STEPS = [
-    {
-      t: "The stack",
-      p: "An application maps a file with MAP_SHARED and changes it through memory. Between its stores and the disk sit the page tables, the page cache, the filesystem's writeback and the block layer. The page cache holds the file in folios.",
-      r: ["mmap(MAP_SHARED)", "page cache", "folio"],
-      run() { mode("empty"); setRA(128); meter(0, "0 B"); setC("c-app", "–"); setC("c-disk", "–"); setC("c-ratio", "–"); setC("c-folio", "–"); setC("c-pmd", "0 kB"); setC("c-dirty", "0 kB"); }
-    },
-    {
-      t: "A sequential read builds large folios",
-      p: "Something reads the file front to back: a recovery pass, a backup, a copy. With a large read_ahead_kb, each readahead step raises the folio order by two (2 → 4 → 6 → 8 → 9) until folios reach 2 MiB. A single read() larger than the window can do the same, up to max_sectors_kb. Free memory must have contiguous 2 MiB blocks, or readahead falls back to 4 KiB.",
-      r: ["page_cache_ra_order()", "read_ahead_kb", "max_sectors_kb", "/proc/buddyinfo"],
-      run() {
-        mode("empty"); setRA(4096); on("op-scan", true); meter(0, "0 B");
-        setC("c-app", "0 B"); setC("c-disk", "0 B"); setC("c-ratio", "–"); setC("c-folio", "–"); setC("c-pmd", "0 kB"); setC("c-dirty", "0 kB");
-        for (let i = 0; i < 10; i++) fly(740, 650, folioX(Math.min(3, Math.floor(i / 2.5))), Y0 + CH / 2, { color: "#f29a1f", r: 5, dur: 1100, delay: i * 260 });
-        const sizes = ["16 KiB", "64 KiB", "256 KiB", "1 MiB", "2 MiB"];
-        sizes.forEach((sz, i) => later(400 + i * 600, () => { $("order").textContent = "readahead ramp from file start: " + sizes.slice(0, i + 1).join(" → "); setC("c-folio", sz); }));
-        later(400 + 5 * 600, () => { mode("large"); setC("c-folio", "2 MiB"); $("order").textContent = "from ~16 MiB on: every folio is 2 MiB (order 9)"; });
-      }
-    },
-    {
-      t: "The mapping uses one PMD per folio",
-      p: "When the process touches the mapping, and its virtual address is 2 MiB-aligned with the file offset, a 2 MiB folio can be mapped by a single PMD entry instead of 512 PTEs. That saves TLB entries. It also means one dirty bit covers all 2 MiB. /proc/meminfo and smaps report this as FilePmdMapped. Setting transparent_hugepage/enabled to never does not prevent it.",
-      r: ["do_set_pmd()", "FilePmdMapped", "CONFIG_TRANSPARENT_HUGEPAGE"],
-      run() {
-        mode("large"); setRA(4096); setC("c-folio", "2 MiB"); setC("c-pmd", "8192 kB"); setC("c-dirty", "0 kB");
-        setC("c-app", "0 B"); setC("c-disk", "0 B"); setC("c-ratio", "–"); meter(0, "0 B");
-        $("ptes").classList.add("dim"); on("pmd", true); $("link").classList.add("on");
-      }
-    },
-    {
-      t: "Small stores dirty the whole folio",
-      p: "A slow writer appends small records, about 150 records of 700 B (105 KB) between two writebacks, all landing in one folio. The first store after the last writeback raises a write fault; page_mkwrite calls folio_mark_dirty() and the whole 2 MiB folio is dirty. XFS (iomap) marks every block of it dirty, also on kernel 6.6+, whose per-block tracking only helps write(2).",
-      r: ["page_mkwrite", "folio_mark_dirty()", "fault_dirty_shared_page()"],
-      run() {
-        mode("large"); setRA(4096); setC("c-folio", "2 MiB"); setC("c-pmd", "8192 kB"); on("pmd", true); $("ptes").classList.add("dim"); $("link").classList.add("on");
-        setC("c-app", "0 B"); setC("c-disk", "0 B"); setC("c-ratio", "–"); setC("c-dirty", "0 kB"); meter(0, "0 B");
-        on("op-store", true);
-        for (let i = 0; i < 5; i++) later(i * 380, () => { fly(561, 120, 721, 216, { color: "#ffd166", dur: 650 }); later(600, () => fly(721, 236, cellX(1, 5), Y0 + CH / 2, { color: "#ffd166", dur: 700 })); });
-        later(1400, () => { cells[1][5].classList.add("touch"); on("fs-mkwrite", true); dirtyFolio(1); cells[1][5].classList.add("touch"); setC("c-dirty", "2048 kB", "hot"); fly(cellX(1, 5), Y0 + CH, 385, 528, { color: "#ffd166", r: 5, dur: 600 }); });
-        [21, 42, 63, 84, 105].forEach((kb, i) => later(1400 + i * 420, () => setC("c-app", kb + " KB")));
-      }
-    },
-    {
-      t: "Writeback sends the whole folio",
-      p: "The flusher wakes every 5 s and writes inodes that have been dirty for over 30 s, or sooner on msync(), fsync() or memory pressure. iomap submits every block of the dirty folio: 2 MiB for 105 KB of new data, about 20×. Our lab measured 19.5× at this rate. Faster writers fill more of each folio per cycle, so the ratio drops (1.6× at 200 small records/s). A lone 8-byte store would be the extreme: 2 MiB for 8 B.",
-      r: ["vm.dirty_expire_centisecs", "iomap_writepage_map()", "tracepoint iomap:iomap_writepage"],
-      run() {
-        mode("large"); setRA(4096); setC("c-folio", "2 MiB"); setC("c-pmd", "8192 kB"); on("pmd", true); $("ptes").classList.add("dim"); $("link").classList.add("on");
-        dirtyFolio(1); cells[1][5].classList.add("touch"); setC("c-app", "105 KB"); setC("c-dirty", "2048 kB", "hot"); setC("c-disk", "0 B"); setC("c-ratio", "–"); meter(0, "0 B");
-        on("fs-flusher", true);
-        later(900, () => { on("fs-iomap", true); fly(folioX(1), Y0 + CH, 766, 551, { color: "#ff4f6d", w: FW, dur: 900 }); });
-        later(1800, () => { fly(766, 574, 740, 690, { color: "#ff4f6d", w: 120, dur: 900 }); leds(true); });
-        later(2700, () => { resetCells(); setC("c-dirty", "0 kB"); setC("c-disk", "2 MiB", "hot"); meter(2097152, "2 MiB"); setC("c-ratio", "≈ 20×", "hot"); leds(false); });
-      }
-    },
-    {
-      t: "Late flag updates rewrite data already on disk",
-      p: "Four folios hold large records that were written and flushed once (8 MiB in, 8 MiB out). Later the application flips a small flag in each record header, for example a ring buffer releasing a backlog of entries in one batch. 96 bytes change, but all four folios go dirty and the 8 MiB is written a second time: 2.0× overall, which matches our lab result. The burst grows with the backlog: thousands of delayed headers in a multi-GiB file mean gigabytes in a few seconds.",
-      r: ["Dirty / Writeback in /proc/meminfo", "iostat -x", "/proc/diskstats"],
-      run() {
-        mode("large"); setRA(4096); setC("c-folio", "2 MiB"); setC("c-pmd", "8192 kB"); on("pmd", true); $("ptes").classList.add("dim");
-        setC("c-app", "8 MiB"); setC("c-disk", "8 MiB"); setC("c-ratio", "1.0×", "ok"); setC("c-dirty", "0 kB"); meter(8388608, "8 MiB");
-        on("op-release", true);
-        const hits = [[0, 3], [1, 11], [2, 6], [3, 13]];
-        hits.forEach(([f, c], i) => later(600 + i * 300, () => fly(757, 120, cellX(f, c), Y0 + CH / 2, { color: "#ffd166", dur: 1000 })));
-        hits.forEach(([f, c], i) => later(1600 + i * 300, () => { cells[f][c].classList.add("touch"); setC("c-app", "8 MiB + " + (i + 1) * 24 + " B"); }));
-        later(3000, () => { hits.forEach(([f, c]) => { dirtyFolio(f); cells[f][c].classList.add("touch"); }); setC("c-dirty", "8192 kB", "hot"); on("fs-mkwrite", true); });
-        later(4200, () => { on("fs-flusher", true); on("fs-iomap", true); [0, 1, 2, 3].forEach((f, i) => fly(folioX(f), Y0 + CH, 740, 690, { color: "#ff4f6d", w: FW * .8, dur: 1200, delay: i * 120 })); leds(true); });
-        later(5700, () => { resetCells(); setC("c-dirty", "0 kB"); setC("c-disk", "16 MiB", "hot"); meter(16777216, "16 MiB"); setC("c-ratio", "2.0×", "hot"); leds(false); });
-      }
-    },
-    {
-      t: "With 4 KiB folios only the touched pages go out",
-      p: "Same records and the same four flag flips after lowering read_ahead_kb, keeping large sequential reads away from the file and evicting it (stop the app, drop the cache, restart), or on a filesystem without large folios such as ext4 before 6.16. Each flip dirties one 4 KiB page, so the second write is 16 KiB and the total stays at 1.0×, as in our lab. Compare FilePmdMapped and the device write rate before and after.",
-      r: ["blockdev --setra", "FilePmdMapped = 0", "ext4 < 6.16"],
-      run() {
-        mode("small"); setRA(128); setC("c-folio", "4 KiB"); setC("c-pmd", "0 kB"); on("pmd", false);
-        setC("c-app", "8 MiB"); setC("c-disk", "8 MiB"); setC("c-ratio", "1.0×", "ok"); setC("c-dirty", "0 kB"); meter(8388608, "8 MiB");
-        on("op-release", true);
-        const hits = [[0, 3], [1, 11], [2, 6], [3, 13]];
-        hits.forEach(([f, c], i) => later(600 + i * 300, () => fly(757, 120, cellX(f, c), Y0 + CH / 2, { color: "#ffd166", dur: 1000 })));
-        hits.forEach(([f, c], i) => later(1600 + i * 300, () => { cells[f][c].classList.add("dirty"); setC("c-app", "8 MiB + " + (i + 1) * 24 + " B"); setC("c-dirty", (i + 1) * 4 + " kB"); }));
-        later(3500, () => { on("fs-flusher", true); on("fs-iomap", true); hits.forEach(([f, c], i) => fly(cellX(f, c), Y0 + CH, 740, 690, { color: "#ff4f6d", r: 5, dur: 1100, delay: i * 120 })); leds(true); });
-        later(4900, () => { resetCells(); setC("c-dirty", "0 kB"); setC("c-disk", "8 MiB + 16 KiB", "ok"); meter(8404992, "8 MiB + 16 KiB"); setC("c-ratio", "1.0×", "ok"); leds(false); });
-      }
-    }
+  const walkWrite=makeCells($('walk-write-map')), walkMmap=makeCells($('walk-mmap-map')), walkFile=makeCells($('walk-file-map'),512,64);
+  const steps=[
+    {title:'The app changes 64 bytes',copy:'With pwrite(), the kernel receives an offset and length, then copies 64 bytes into the page cache. With a shared mmap, the CPU stores directly into the mapped cache memory. An initial write fault lets the filesystem prepare the mapping for writes.',takeaway:'Both update cached file data in RAM. Neither ordinary operation promises that the data is already durable on disk.'},
+    {title:'Dirty state diverges',copy:'Buffered I/O marks the block overlapping the 64-byte range dirty. In the modeled mmap path, the whole 2 MiB folio becomes dirty, including all 512 block bits. The CPU’s PMD dirty bit cannot identify the smaller range.',takeaway:'One dirty folio in both cases. One dirty block versus 512 dirty blocks inside it.'},
+    {title:'The file joins a dirty queue',copy:'The folio gets a dirty cache tag. The file’s inode gets I_DIRTY_PAGES and joins the writeback context’s dirty list. A first dirty inode can schedule a delayed worker wakeup. The inode’s dirty timestamp supports later age checks.',takeaway:'The shared queue schedules the file. It does not restore the byte-range information lost by coarse dirtying.'},
+    {title:'The worker checks the age',copy:'When the worker runs, wb_do_writeback() calls wb_check_old_data_flush(). If a periodic pass is due, wb_writeback() applies the dirty-age cutoff. Eligible inodes move to the I/O list; younger ones can stay queued.',takeaway:'Wake interval and dirty-age cutoff are separate controls. Sync requests and dirty pressure can trigger writeback sooner.'},
+    {title:'Find the dirty folio',copy:'Filesystem writeback uses tagged page-cache lookup to find dirty folios. Here it selects folio #200 and skips the 511 clean folios. Before I/O, mapped dirty state is reconciled and writable mappings are cleaned and write-protected.',takeaway:'A pass is bounded by its range and budget. It does not read every byte of the file or necessarily flush every dirty folio at once.'},
+    {title:'Submit the dirty blocks',copy:'iomap finds the dirty block ranges inside the selected folio. Buffered I/O submits one 4 KiB block. Whole-folio mmap dirtying submits all 512 blocks: 2 MiB. The same writeback machinery processes both paths.',takeaway:'The difference is the recorded dirty footprint: 512× as much file-data I/O for the same 64-byte edit.'}
   ];
-
-  // ---- UI
-  const list = $("steplist");
-  STEPS.forEach((s, i) => { const b = document.createElement("button"); b.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span><span></span>`; b.lastChild.textContent = s.t; b.addEventListener("click", () => { go(i); }); list.appendChild(b); });
-  let cur = 0, playing = !reduce, auto = null;
-  const DWELL = [6000, 8500, 8000, 8000, 9000, 11000, 10000];
-  function go(i) {
-    cur = (i + STEPS.length) % STEPS.length;
-    base(); STEPS[cur].run();
-    $("n-k").textContent = `Step ${cur + 1} of ${STEPS.length}`;
-    $("n-h").textContent = STEPS[cur].t; $("n-p").textContent = STEPS[cur].p;
-    const r = $("n-r"); r.replaceChildren(...STEPS[cur].r.map(x => { const c = document.createElement("code"); c.textContent = x; return c; }));
-    [...list.children].forEach((b, j) => j === cur ? b.setAttribute("aria-current", "step") : b.removeAttribute("aria-current"));
-    schedule();
+  let step=0, timer=null, walkFolio=2097152, raProfile="array";
+  const stepButtons=Array.from(document.querySelectorAll('[data-step]'));
+  function stopPlay(){if(timer!==null){clearInterval(timer);timer=null;}$('play').textContent='Play ▶';$('play').setAttribute('aria-pressed','false');$('play').setAttribute('aria-label','Play walkthrough');}
+  function showStep(next){
+    step=Math.max(0,Math.min(5,next));const s={...steps[step]};
+    const blocks=walkFolio/BLOCK, folioLabel=fmt(walkFolio), folioCount=FILE/walkFolio, folioIndex=400*1048576/walkFolio;
+    if(step===1){s.copy='Buffered I/O marks the block overlapping the 64-byte range dirty. In the modeled mmap path, the entire '+folioLabel+' folio becomes dirty: all '+blocks+' blocks. '+(walkFolio===REGION?'A PMD dirty bit cannot identify the smaller range.':'PTE mappings also pass through whole-folio dirtying here.');s.takeaway='One dirty folio in both cases. One dirty block versus '+blocks+' dirty blocks inside it.';}
+    if(step===4){s.copy='Filesystem writeback uses tagged cache lookup. Here it selects folio #'+folioIndex+' and skips '+(folioCount-1).toLocaleString('en-US')+' clean folios. Before I/O, mapped dirty state is reconciled and writable mappings are cleaned and write-protected.';}
+    if(step===5){s.copy='iomap finds dirty block ranges inside the selected folio. Buffered I/O submits one 4 KiB block. Whole-folio mmap dirtying submits '+blocks+' blocks: '+folioLabel+'. The same writeback machinery processes both paths.';s.takeaway='The recorded dirty footprint produces '+blocks+'× as much file-data I/O for the same 64-byte edit.';}
+    $('hero-mmap').textContent=folioLabel;$('walk-folio-intro').textContent=folioLabel;$('walk-folio-badge').textContent=folioLabel+' folios';
+    $('walk-map-unit').textContent='Each square = 4 KiB. This 2 MiB region contains '+(REGION/walkFolio)+' folio'+(walkFolio===REGION?'':'s')+' of '+blocks+' blocks each.';
+    $('walk-selected-count').textContent='1 of '+folioCount.toLocaleString('en-US')+' folios selected.';
+    $('step-kicker').textContent='STEP '+String(step+1).padStart(2,'0')+' OF 06';$('step-title').textContent=s.title;$('step-copy').textContent=s.copy;$('step-takeaway').textContent=s.takeaway;
+    stepButtons.forEach((b,i)=>{if(i===step)b.setAttribute('aria-current','step');else b.removeAttribute('aria-current');});
+    document.querySelectorAll('[data-stage]').forEach((el,i)=>{el.classList.toggle('active',i===step);el.classList.toggle('future',i>step);});
+    $('prev').disabled=step===0;$('next').disabled=step===5;
+    const dirty=step>=1, flushed=step===5;
+    walkWrite.forEach((c,i)=>c.setAttribute('fill',dirty&&i===0?palette.blue:palette.clean));
+    walkMmap.forEach((c,i)=>c.setAttribute('fill',dirty&&i<blocks?(i===0?palette.blue:palette.amber):palette.clean));
+    walkFile.forEach((c,i)=>c.setAttribute('fill',step>=4&&i===200?palette.violet:palette.clean));
+    $('walk-write-blocks').innerHTML=(dirty?'1':'0')+' <small>dirty block'+(dirty?'':'s')+'</small>';
+    $('walk-mmap-blocks').innerHTML=(dirty?String(blocks):'0')+' <small>dirty blocks</small>';
+    $('walk-write-caption').textContent=dirty?'The range overlaps one filesystem block.':'The cache starts clean.';
+    $('walk-mmap-caption').textContent=dirty?blocks+' blocks marked dirty in the touched folio.':'The cache starts clean.';
+    $('walk-write-map').setAttribute('aria-label',dirty?'1 of 512 blocks dirty; 4 KiB writeback footprint':'512 clean blocks');
+    $('walk-mmap-map').setAttribute('aria-label',dirty?blocks+' of 512 blocks dirty in this region; '+folioLabel+' writeback footprint':'512 clean blocks');
+    $('walk-file-map').setAttribute('aria-label',step>=4?'Only region 200 of 512 contains a selected dirty folio':'Dirty-folio lookup has not run yet');
+    $('walk-write-disk').textContent=flushed?'4 KiB':'0 B';$('walk-mmap-disk').textContent=flushed?folioLabel:'0 B';
+    $('walk-write-disk-note').textContent=flushed?'1 block of file data':'Data submitted so far';$('walk-mmap-disk-note').textContent=flushed?blocks+' blocks of file data':'Data submitted so far';
+    $('walk-write-bar').style.width=flushed?(100/512)+'%':'0%';$('walk-mmap-bar').style.width=flushed?(100*walkFolio/REGION)+'%':'0%';
+    $('walk-result-note').textContent=flushed?'mmap ÷ write() file-data bytes. Bars share a 0–2 MiB scale.':'Same 64-byte application update. Step forward to submit writeback.';$('walk-ratio').textContent=flushed?blocks+'×':'—';
+    if(flushed)stopPlay();
   }
-  function schedule() { clearTimeout(auto); if (playing) auto = setTimeout(() => go(cur + 1), DWELL[cur]); }
-  $("next").addEventListener("click", () => go(cur + 1));
-  $("prev").addEventListener("click", () => go(cur - 1));
-  $("play").addEventListener("click", () => { playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; if (playing) go(cur); else clearTimeout(auto); });
-  $("play").textContent = playing ? "Pause" : "Play";
-  document.addEventListener("keydown", (e) => { if (e.key === "ArrowRight") go(cur + 1); if (e.key === "ArrowLeft") go(cur - 1); });
-  go(0);
-})();
-</script>
+  stepButtons.forEach((b,i)=>b.addEventListener('click',()=>{stopPlay();showStep(i);}));
+  $('prev').addEventListener('click',()=>{stopPlay();showStep(step-1);});$('next').addEventListener('click',()=>{stopPlay();showStep(step+1);});
+  $('play').addEventListener('click',()=>{if(timer!==null){stopPlay();return;}if(step===5)showStep(0);$('play').textContent='Pause Ⅱ';$('play').setAttribute('aria-pressed','true');$('play').setAttribute('aria-label','Pause walkthrough');timer=setInterval(()=>showStep(step+1),7000);});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlay();});
 
-</body></html>
+  let seed=20261009, samples=initial, selectedRegion=0, model=null;
+  const zoomWrite=makeCells($('zoom-write')), zoomMmap=makeCells($('zoom-mmap'));
+  const tiles=Array.from({length:512},(_,i)=>{const b=document.createElement('button');b.className='file-tile';b.type='button';b.dataset.region=String(i);b.tabIndex=i===0?0:-1;b.setAttribute('aria-pressed',i===0?'true':'false');b.addEventListener('click',()=>selectRegion(i));b.addEventListener('keydown',e=>{let target=i;const columns=getComputedStyle($('file-grid')).gridTemplateColumns.split(' ').length;if(e.key==='ArrowRight')target++;else if(e.key==='ArrowLeft')target--;else if(e.key==='ArrowDown')target+=columns;else if(e.key==='ArrowUp')target-=columns;else if(e.key==='Home')target=0;else if(e.key==='End')target=511;else return;e.preventDefault();target=Math.min(511,Math.max(0,target));selectRegion(target);tiles[target].focus();});$('file-grid').appendChild(b);return b;});
+  function mulberry32(a){return()=>{let t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};}
+  function makeSamples(s){const rng=mulberry32(s);const sample=(n,start=0)=>{const set=new Set();while(set.size<512)set.add(start+Math.floor(rng()*n));return Array.from(set);};const random=sample(FILE/BLOCK),cluster=sample(4096,98304),order=Array.from({length:512},(_,i)=>i);for(let i=511;i>0;i--){const j=Math.floor(rng()*(i+1));[order[i],order[j]]=[order[j],order[i]];}const spread=order.map(i=>i*512+Math.floor(rng()*512));return{random,cluster,spread};}
+  function calculate(blocks,folioBytes,updateBytes){
+    const blocksPerFolio=folioBytes/BLOCK, dirtyFolios=new Set(blocks.map(b=>Math.floor(b/blocksPerFolio))), regions=Array(512).fill(0);
+    blocks.forEach(b=>regions[Math.floor(b/512)]++);
+    return{blocks,blockSet:new Set(blocks),folioBytes,updateBytes,blocksPerFolio,dirtyFolios,regions,appBytes:blocks.length*updateBytes,writeBytes:blocks.length*BLOCK,mmapBytes:dirtyFolios.size*folioBytes};
+  }
+  function selectRegion(index){selectedRegion=Math.max(0,Math.min(511,Math.round(index)));$('region').value=String(selectedRegion);tiles.forEach((b,i)=>{b.classList.toggle('selected',i===selectedRegion);b.tabIndex=i===selectedRegion?0:-1;b.setAttribute('aria-pressed',i===selectedRegion?'true':'false');});renderZoom();}
+  function renderZoom(){
+    if(!model)return;let written=0,mapped=0;
+    zoomWrite.forEach((c,i)=>{const block=selectedRegion*512+i,has=model.blockSet.has(block),mmap=model.dirtyFolios.has(Math.floor(block/model.blocksPerFolio));if(has)written++;if(mmap)mapped++;c.setAttribute('fill',has?palette.blue:palette.clean);zoomMmap[i].setAttribute('fill',has?palette.blue:mmap?palette.amber:palette.clean);});
+    const count=model.regions[selectedRegion];$('region-description').textContent=(selectedRegion*2)+'–'+(selectedRegion*2+2)+' MiB · '+count+' update'+(count===1?'':'s')+' · '+(REGION/model.folioBytes)+' folio'+(model.folioBytes===REGION?'':'s');
+    $('zoom-write-bytes').textContent=fmt(written*BLOCK);$('zoom-mmap-bytes').textContent=fmt(mapped*BLOCK);
+    $('zoom-write').setAttribute('aria-label','Region '+selectedRegion+': '+written+' dirty blocks, '+fmt(written*BLOCK)+' writeback with write()');
+    $('zoom-mmap').setAttribute('aria-label','Region '+selectedRegion+': '+mapped+' dirty blocks, '+fmt(mapped*BLOCK)+' writeback with mmap');
+  }
+  function updateExplorer(resetRegion=false){
+    const pattern=$('pattern').value,n=Number($('update-count').value),folio=Number($('folio-size').value),size=Number($('update-size').value);
+    model=calculate(samples[pattern].slice(0,n),folio,size);
+    $('count-output').textContent=String(n);$('app-bytes').textContent=fmt(model.appBytes);$('app-sub').textContent=n+' × '+fmt(size);$('write-bytes').textContent=fmt(model.writeBytes);$('write-sub').textContent=n+' dirty block'+(n===1?'':'s');$('mmap-bytes').textContent=fmt(model.mmapBytes);$('mmap-sub').textContent=model.dirtyFolios.size+' dirty folio'+(model.dirtyFolios.size===1?'':'s');$('io-ratio').textContent=ratioFmt(model.mmapBytes/model.writeBytes);
+    $('write-formula').textContent=n+' blocks × 4 KiB = '+fmt(model.writeBytes);$('mmap-formula').textContent=model.dirtyFolios.size+' folios × '+fmt(folio)+' = '+fmt(model.mmapBytes);
+    tiles.forEach((b,i)=>{const count=model.regions[i];b.classList.toggle('touched',count>0);const label='Region '+i+', '+i*2+' to '+(i*2+2)+' MiB: '+count+' updated block'+(count===1?'':'s');b.setAttribute('aria-label',label);b.title=label;});
+    const touched=model.regions.filter(n=>n>0).length;$('map-meta').textContent=touched+' of 512 regions touched · '+model.dirtyFolios.size.toLocaleString('en-US')+' of '+(FILE/folio).toLocaleString('en-US')+' cache folios dirty.';
+    $('pattern-note').textContent=pattern==='random'?'Uniform sample of distinct blocks across the whole file.':pattern==='cluster'?'Distinct blocks sampled only from 384–400 MiB: a 16 MiB cluster.':'One distinct block per 2 MiB region, in shuffled order. At 512 updates, every region is touched.';
+    $('sample-label').textContent=(seed===20261009?'Fixed sample':'Sample seed')+' · '+seed;
+    selectRegion(resetRegion?model.regions.findIndex(n=>n>0):selectedRegion);
+  }
+  $('pattern').addEventListener('change',()=>updateExplorer(true));$('folio-size').addEventListener('change',()=>{updateExplorer();$('ra-explorer-note').textContent='Manual comparison: '+fmt(Number($('folio-size').value))+' folios. This is an assumed allocation size, independent of the readahead preset above.';});$('update-size').addEventListener('change',()=>updateExplorer());$('update-count').addEventListener('input',()=>updateExplorer());
+  $('resample').addEventListener('click',()=>{seed++;samples=makeSamples(seed);updateExplorer(true);});
+  $('region').addEventListener('change',()=>{const value=Number($('region').value);selectRegion(Number.isFinite(value)?value:0);});
+  const ptes=$('pte-entries');Array.from({length:512},(_,i)=>{const el=document.createElement('i');if(i===0)el.className='dirty';ptes.appendChild(el);});
+  function setMapping(type){const pmd=type==='pmd';$('mapping-pmd').setAttribute('aria-pressed',String(pmd));$('mapping-pte').setAttribute('aria-pressed',String(!pmd));$('pmd-entry').hidden=!pmd;$('pte-entries').hidden=pmd;$('mapping-explanation').textContent=pmd?'A PMD dirty bit says that something in its 2 MiB mapping was written. It does not identify the modified 4 KiB block.':'Each of the 512 PTEs has its own dirty bit. That is finer information, but the modeled dirty-folio path still marks the entire cache folio dirty.';}
+  $('mapping-pmd').addEventListener('click',()=>setMapping('pmd'));$('mapping-pte').addEventListener('click',()=>setMapping('pte'));
+  function setRaProfile(profile){
+    raProfile=profile;const large=profile==='array';walkFolio=large?2097152:131072;const windowKiB=large?2304:128;
+    $('ra-baseline').setAttribute('aria-pressed',String(!large));$('ra-array').setAttribute('aria-pressed',String(large));
+    $('ra-device-copy').textContent=large?'An array can advertise a large optimal I/O size. The block layer can raise readahead to at least twice that size.':'128 KiB is the kernel baseline. Device limits or system configuration can raise it; inspect the actual filesystem-facing device.';
+    $('ra-window').textContent=windowKiB+' KiB';$('ra-window-copy').textContent=(windowKiB/4)+' × 4 KiB pages fit in this window.';
+    $('ra-folio').textContent=fmt(walkFolio);$('ra-ratio').textContent=(walkFolio/BLOCK)+'×';$('ra-mmap').textContent=fmt(walkFolio);
+    $('ra-bars').innerHTML='<i></i>'.repeat(REGION/walkFolio);$('ra-bars').setAttribute('aria-label',REGION/walkFolio+' folios of '+fmt(walkFolio)+' span a 2 MiB region');
+    $('ra-folio-copy').textContent=large?'A 2 MiB folio can fit in 2304 KiB. Some allocations can reach this size; others can be smaller.':'A 128 KiB folio fits this normal window; 2 MiB does not. The bar shows sixteen 128 KiB folios in the same 2 MiB region.';
+    $('ra-assumption').textContent='Comparison assumption: '+fmt(walkFolio)+' folios.';
+    $('folio-size').value=String(walkFolio);$('ra-explorer-note').textContent='Readahead preset: '+windowKiB+' KiB. Model uses '+fmt(walkFolio)+' folios; actual allocations can be mixed.';
+    stopPlay();showStep(step);updateExplorer();
+  }
+  $('ra-baseline').addEventListener('click',()=>setRaProfile('baseline'));$('ra-array').addEventListener('click',()=>setRaProfile('array'));
+  setRaProfile('array');selectRegion(model.regions.findIndex(n=>n>0));
+})();
+</script></body></html>
